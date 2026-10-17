@@ -1,0 +1,710 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="theme-color" content="#4f46e5" />
+<title>Menus &amp; Courses</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  :root { --indigo:#4f46e5; --indigo-dark:#3730a3; --bg:#f5f5f4; --card:#ffffff; --txt:#1c1917; --muted:#78716c; --line:#e7e5e4; --green:#059669; --amber:#d97706; }
+  body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background:var(--bg); color:var(--txt); max-width:480px; margin:0 auto; min-height:100vh; padding-bottom:76px; }
+  header { position:sticky; top:0; z-index:20; background:var(--card); border-bottom:1px solid var(--line); padding:14px 16px 12px; display:flex; justify-content:space-between; align-items:center; }
+  header h1 { font-size:19px; font-weight:800; }
+  header .sub { font-size:11px; color:var(--muted); margin-top:2px; }
+  .avatars { display:flex; }
+  .avatar { width:30px; height:30px; border-radius:50%; display:flex; align-items:center; justify-content:center; color:#fff; font-size:11px; font-weight:700; border:2px solid #fff; }
+  .avatar+ .avatar { margin-left:-8px; }
+  main { padding:12px 14px; }
+  .btn { border:none; border-radius:12px; padding:12px; font-size:14px; font-weight:600; cursor:pointer; width:100%; }
+  .btn-primary { background:var(--indigo); color:#fff; box-shadow:0 6px 16px rgba(79,70,229,.25); }
+  .btn-ghost { background:#fff; color:var(--muted); border:1px solid var(--line); }
+  .pill { font-size:10px; padding:3px 8px; border-radius:99px; font-weight:600; display:inline-block; }
+  .pill.on { outline:2px solid currentColor; outline-offset:1px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:16px; padding:12px; margin-bottom:10px; }
+  .grid { display:grid; grid-template-columns:repeat(7,1fr); gap:4px; }
+  .grid .h { font-size:10px; font-weight:700; color:var(--muted); text-align:center; padding:2px 0; }
+  .grid .rl { font-size:9px; font-weight:700; color:#a8a29e; display:flex; align-items:center; justify-content:center; writing-mode:vertical-rl; transform:rotate(180deg); }
+  .cell { min-height:56px; border-radius:10px; border:none; font-size:9.5px; font-weight:600; cursor:pointer; padding:4px; text-align:left; line-height:1.15; overflow:hidden; }
+  .cell.empty { border:2px dashed var(--line); color:#d6d3d1; display:flex; align-items:center; justify-content:center; font-size:18px; background:transparent; }
+  .cell.filled { background:#eef2ff; color:#3730a3; }
+  .cell.special { background:#f5f3ff; color:#6d28d9; }
+  .cell.nobody { background:#f5f5f4; color:#a8a29e; display:flex; align-items:center; justify-content:center; }
+  .cell .who { display:block; font-size:8.5px; color:var(--muted); font-weight:500; }
+  nav.bottom { position:fixed; bottom:0; left:50%; transform:translateX(-50%); width:100%; max-width:480px; background:#fff; border-top:1px solid var(--line); display:flex; z-index:30; }
+  nav.bottom button { flex:1; padding:9px 0 11px; background:none; border:none; font-size:10.5px; font-weight:600; color:#a8a29e; cursor:pointer; }
+  nav.bottom button.on { color:var(--indigo); }
+  nav.bottom button .ic { display:block; font-size:20px; margin:0 auto 2px; width:fit-content; }
+  .sheet-bkg { position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:40; display:flex; align-items:flex-end; justify-content:center; }
+  .sheet { background:#fff; width:100%; max-width:480px; border-radius:24px 24px 0 0; padding:20px 18px 26px; max-height:86vh; overflow-y:auto; }
+  .sheet h3 { font-size:17px; font-weight:800; margin-bottom:12px; display:flex; justify-content:space-between; align-items:center; }
+  .sheet .close { background:none; border:none; font-size:18px; color:var(--muted); cursor:pointer; }
+  .row { display:flex; gap:8px; align-items:center; }
+  .grow { flex:1; }
+  .field { width:100%; border:1px solid var(--line); border-radius:12px; padding:10px 12px; font-size:14px; font-family:inherit; background:#fff; }
+  .field:focus { outline:none; border-color:var(--indigo); }
+  .lbl { font-size:11px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.4px; margin:14px 0 6px; }
+  .person { flex:1; border:1.5px solid var(--line); border-radius:12px; padding:8px 4px; text-align:center; font-size:11.5px; font-weight:600; background:#fff; cursor:pointer; color:var(--muted); font-family:inherit; }
+  .person.on { background:#eef2ff; border-color:var(--indigo); color:var(--indigo); }
+  .person .e { font-size:17px; display:block; }
+  .person .p { font-size:9px; display:block; opacity:.7; }
+  .optline { border:1.5px solid var(--line); background:#fff; border-radius:12px; padding:9px 12px; font-size:13px; font-weight:600; color:var(--txt); margin-bottom:8px; cursor:pointer; display:block; width:100%; text-align:left; font-family:inherit; }
+  .tagrow { display:flex; gap:6px; flex-wrap:wrap; margin-top:6px; }
+  .checker { width:24px; height:24px; border-radius:8px; border:2px solid var(--line); background:#fff; cursor:pointer; display:flex; align-items:center; justify-content:center; font-size:13px; color:#fff; flex-shrink:0; }
+  .checker.on { background:var(--green); border-color:var(--green); }
+  .item { display:flex; gap:10px; align-items:center; padding:9px 0; border-bottom:1px solid var(--line); }
+  .item.done { opacity:.4; }
+  .item.done .nm { text-decoration:line-through; }
+  .syncbar { position:fixed; top:0; left:50%; transform:translateX(-50%); z-index:60; background:#065f46; color:#fff; font-size:11px; font-weight:600; padding:5px 14px; border-radius:0 0 12px 12px; display:none; }
+  .stepper { display:flex; align-items:center; gap:14px; }
+  .stepper button { width:38px; height:38px; border-radius:50%; border:none; background:#fff; font-size:20px; font-weight:700; color:var(--indigo); box-shadow:0 1px 4px rgba(0,0,0,.15); cursor:pointer; }
+  .stepper .val { font-size:22px; font-weight:800; width:52px; text-align:center; }
+  .toast { position:fixed; bottom:90px; left:50%; transform:translateX(-50%); background:#1c1917; color:#fff; font-size:12.5px; font-weight:600; padding:10px 18px; border-radius:99px; z-index:70; opacity:0; transition:opacity .25s; pointer-events:none; max-width:88%; text-align:center; }
+</style>
+</head>
+<body>
+<div class="syncbar" id="syncbar">Hors ligne — les modifications seront synchronisées au retour du réseau</div>
+<header>
+  <div>
+    <h1 id="h-title">Planning</h1>
+    <div class="sub" id="h-sub"></div>
+  </div>
+  <div class="avatars" id="h-avatars"></div>
+</header>
+<main id="app"></main>
+<nav class="bottom" id="nav"></nav>
+<div id="sheet-holder"></div>
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+/* ============================================================
+   MENUS & COURSES — v1.0 (application réelle)
+   Fichier unique : déployable sur GitHub Pages.
+   - Mode LOCAL : fonctionne immédiatement (localStorage).
+   - Mode PARTAGÉ : renseigner SUPABASE_URL et SUPABASE_ANON_KEY
+     ci-dessous (créés sur supabase.com, guide fourni) →
+     synchronisation temps réel entre Gabriel et sa compagne.
+   ============================================================ */
+
+const SUPABASE_URL = "https://dqztmfrjohbiyohvicemq.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_5Vch5zEymP-ExqRat4VvmA_eVuHHDEE";
+const FOYER = "CADOUX";         // code foyer : ta compagne utilisera le même
+
+// ---------- Constantes métier ----------
+const PERSONNES = [
+  { id:"gabriel",   label:"Gabriel",   emoji:"👨", parts:1 },
+  { id:"compagne",  label:"Compagne",  emoji:"👩", parts:1 },
+  { id:"raphaelle", label:"Raphaëlle", emoji:"👧", parts:0.5 },
+];
+const TAGS = {
+  vege:   { label:"Végétarien",    css:"background:#d1fae5;color:#047857" },
+  rapide: { label:"Rapide <30min", css:"background:#fef3c7;color:#b45309" },
+  viande: { label:"Viande",        css:"background:#ffe4e6;color:#be123c" },
+  poisson:{ label:"Poisson",       css:"background:#e0f2fe;color:#0369a1" },
+  hiver:  { label:"Hiver",         css:"background:#e0e7ff;color:#4338ca" },
+  ete:    { label:"Été",            css:"background:#ecfccb;color:#4d7c0f" },
+};
+const CATS = [
+  { id:"legumes", label:"Légumes & Fruits",   emoji:"🥕" },
+  { id:"viande",  label:"Viande & Poisson",   emoji:"🥩" },
+  { id:"laitage", label:"Laitage & Crèmerie", emoji:"🧀" },
+  { id:"menage",  label:"Ménage & Hygiène",   emoji:"🧼" },
+  { id:"autres",  label:"Autres",             emoji:"📦" },
+];
+
+// ---------- État & persistance ----------
+// Stockage sûr : localStorage si disponible, sinon mémoire (aperçus sandboxés)
+const LS_KEY = "menus-courses-" + FOYER;
+const memStore = {};
+function lsGet(k){ try { return localStorage.getItem(k); } catch(e) { return memStore[k] || null; } }
+function lsSet(k,v){ try { localStorage.setItem(k,v); } catch(e) { memStore[k]=v; } }
+function lsDel(k){ try { localStorage.removeItem(k); } catch(e) { delete memStore[k]; } }
+if (typeof structuredClone !== "function") {
+  window.structuredClone = (o) => JSON.parse(JSON.stringify(o));
+}
+const DEFAULT_STATE = {
+  weekStart: null,   // "YYYY-MM-DD" du premier jour du planning
+  meals: {},         // "YYYY-MM-DD|midi" ou "|soir" → {recetteId, convives[], special}
+  extras: [],        // plats hors planning [{id, nom}]
+  recipes: [],
+  list: [],          // [{id, cat, nom, qte, checked, home}]
+};
+let S = loadState();
+let nav = "planning";
+
+function loadState() {
+  try {
+    const raw = lsGet(LS_KEY);
+    if (raw) return Object.assign(structuredClone(DEFAULT_STATE), JSON.parse(raw));
+  } catch(e) {}
+  const st = structuredClone(DEFAULT_STATE);
+  st.weekStart = todayISO();
+  return st;
+}
+function save() {
+  lsSet(LS_KEY, JSON.stringify(S));
+  schedulePush();
+}
+function todayISO() { return new Date().toISOString().slice(0,10); }
+function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
+function fmtD(iso) {
+  const d = new Date(iso + "T12:00:00");
+  return d.toLocaleDateString("fr-FR", { weekday:"short", day:"numeric" });
+}
+function esc(s){ return String(s||"").replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+
+// ---------- Rendu ----------
+function render() {
+  document.getElementById("nav").innerHTML = [
+    ["planning","🗓️","Planning"],
+    ["recettes","👨‍🍳","Recettes"],
+    ["courses","🛒","Courses"],
+    ["reglages","⚙️","Réglages"],
+  ].map(([id,ic,lb]) => `<button class="${nav===id?'on':''}" onclick="go('${id}')"><span class="ic">${ic}</span>${lb}</button>`).join("");
+
+  const titles = {
+    planning:["Planning de la semaine", "Le point de départ : organisez les repas"],
+    recettes:["Mes recettes", S.recipes.length + " recette(s) · modifiables"],
+    courses:["Liste de courses", "Cochez en magasin — fonctionne hors ligne"],
+    reglages:["Réglages", "Foyer, synchronisation, données"],
+  };
+  document.getElementById("h-title").textContent = titles[nav][0];
+  document.getElementById("h-sub").textContent = titles[nav][1];
+  document.getElementById("h-avatars").innerHTML =
+    `<div class="avatar" style="background:#6366f1">GC</div><div class="avatar" style="background:#fb7185">C</div>`;
+
+  const app = document.getElementById("app");
+  if (nav==="planning") renderPlanning(app);
+  else if (nav==="recettes") renderRecettes(app);
+  else if (nav==="courses") renderCourses(app);
+  else renderReglages(app);
+}
+function go(id) { nav = id; closeSheet(); render(); }
+function toast(msg) {
+  const t = document.getElementById("toast");
+  t.textContent = msg; t.style.opacity = 1;
+  clearTimeout(t._h); t._h = setTimeout(()=>{ t.style.opacity = 0; }, 2600);
+}
+function closeSheet() { document.getElementById("sheet-holder").innerHTML = ""; }
+function openSheet(html) {
+  document.getElementById("sheet-holder").innerHTML =
+    `<div class="sheet-bkg" onclick="if(event.target===this)closeSheet()"><div class="sheet">${html}</div></div>`;
+}
+
+// ============================================================
+// PLANNING
+// ============================================================
+function renderPlanning(el) {
+  const start = S.weekStart || todayISO();
+  const days = [...Array(7)].map((_,i)=>{
+    const d = new Date(start + "T12:00:00"); d.setDate(d.getDate()+i);
+    return d.toISOString().slice(0,10);
+  });
+  let cells = `<div></div>` + days.map(d=>`<div class="h">${fmtD(d)}</div>`).join("");
+  ["midi","soir"].forEach(repas => {
+    cells += `<div class="rl">${repas==="midi"?"MIDI":"SOIR"}</div>`;
+    days.forEach(d => { cells += mealCell(d, repas); });
+  });
+
+  el.innerHTML = `
+    <div class="row" style="margin-bottom:10px">
+      <span style="font-size:12px;color:var(--muted)">Semaine à partir du</span>
+      <input type="date" class="field grow" style="padding:6px 10px;font-size:13px" value="${start}"
+             onchange="setWeekStart(this.value)">
+    </div>
+    <div class="grid">${cells}</div>
+    <div class="lbl" style="margin-top:14px">Hors planning (gâteau, invités…)</div>
+    ${S.extras.map(x=>`
+      <div class="row card" style="justify-content:space-between;padding:9px 12px;margin-bottom:8px">
+        <span style="font-size:13px">🍰 ${esc(x.nom)}</span>
+        <span>
+          <button class="optline" style="display:inline-block;width:auto;padding:4px 10px;font-size:11px;margin:0;color:#b45309" onclick="extraToList('${x.id}')">+ courses</button>
+          <button class="optline" style="display:inline-block;width:auto;padding:4px 9px;font-size:11px;margin:0 0 0 4px;color:#a8a29e" onclick="delExtra('${x.id}')">✕</button>
+        </span>
+      </div>`).join("")}
+    <button class="optline" style="border-style:dashed;color:#a8a29e;text-align:center" onclick="askExtra()">+ Ajouter un plat hors planning</button>
+    <div style="height:14px"></div>
+    <button class="btn btn-primary" onclick="generateList()">✨ Générer la liste de courses</button>
+    <p style="font-size:10px;color:#a8a29e;text-align:center;margin-top:8px">
+      Chaque nouveau planning lance une nouvelle liste.<br>Les articles non cochés seront reportés automatiquement.
+    </p>`;
+}
+function setWeekStart(v){ if(v){ S.weekStart = v; save(); render(); } }
+function mealCell(d, repas) {
+  const key = d + "|" + repas;
+  const m = S.meals[key];
+  if (!m) return `<button class="cell empty" onclick="editMeal('${d}','${repas}')">+</button>`;
+  if (!m.convives || m.convives.length===0)
+    return `<button class="cell nobody" onclick="editMeal('${d}','${repas}')">vide</button>`;
+  const parts = partsOf(m.convives);
+  if (m.special)
+    return `<button class="cell special" onclick="editMeal('${d}','${repas}')">🎉 ${esc(m.special)}<span class="who">${parts} pers.</span></button>`;
+  const r = S.recipes.find(x=>x.id===m.recetteId);
+  return `<button class="cell filled" onclick="editMeal('${d}','${repas}')">${r?esc(r.nom):"—"}<span class="who">${parts} portion${parts>1?"s":""} · ${m.convives.length} pers.</span></button>`;
+}
+function partsOf(ids){ return PERSONNES.filter(p=>ids.includes(p.id)).reduce((s,p)=>s+p.parts,0); }
+
+function editMeal(d, repas) {
+  const key = d + "|" + repas;
+  const m = S.meals[key] || { recetteId:null, convives:[], special:null };
+  openSheet(`
+    <h3>${fmtD(d)} · ${repas==="midi"?"Midi":"Soir"} <button class="close" onclick="closeSheet()">✕</button></h3>
+    <div class="lbl">Qui mange ?</div>
+    <div class="row">
+      ${PERSONNES.map(p=>`
+        <button class="person ${m.convives.includes(p.id)?'on':''}" onclick="toggleConvive('${key}','${p.id}')">
+          <span class="e">${p.emoji}</span>${p.label}<span class="p">${p.parts} portion</span>
+        </button>`).join("")}
+    </div>
+    <button class="optline" style="margin-top:8px;text-align:center;color:#a8a29e" onclick="setMealEmpty('${key}')">Option « vide » — personne ne mange à la maison 🚫</button>
+    ${m.convives.length ? `
+      <div class="lbl">Plat principal</div>
+      ${S.recipes.map(r=>`
+        <button class="optline" onclick="setMealRecipe('${key}','${r.id}')"
+          style="${m.recetteId===r.id?'border-color:var(--indigo);background:#eef2ff':''}">
+          ${esc(r.nom)}
+          <span class="tagrow">${(r.tags||[]).map(t=>`<span class="pill" style="${TAGS[t].css}">${TAGS[t].label}</span>`).join("")}</span>
+        </button>`).join("")}
+      ${S.recipes.length ? "" : `<p style="font-size:12px;color:var(--muted)">Aucune recette — ajoutez-en dans l'onglet Recettes 👨‍🍳</p>`}
+      <button class="optline" style="color:#7c3aed;text-align:center;border-color:#ddd6fe" onclick="askSpecial('${key}')">🎉 Repas spécial (anniversaire, invités…)</button>
+    ` : ""}
+  `);
+}
+function toggleConvive(key, pid) {
+  const m = S.meals[key] || { recetteId:null, convives:[], special:null };
+  m.convives = m.convives.includes(pid) ? m.convives.filter(x=>x!==pid) : [...m.convives, pid];
+  S.meals[key] = m; save(); editMeal(...key.split("|"));
+}
+function setMealEmpty(key){ S.meals[key] = { recetteId:null, convives:[], special:null }; save(); closeSheet(); render(); }
+function setMealRecipe(key, rid){
+  const m = S.meals[key] || {}; m.recetteId = rid; m.special = null;
+  S.meals[key] = m; save(); closeSheet(); render();
+  toast("Repas ajouté — pensez à régénérer la liste 🛒");
+}
+function askSpecial(key) {
+  openSheet(`
+    <h3>Repas spécial <button class="close" onclick="closeSheet()">✕</button></h3>
+    <input class="field" id="sp-name" placeholder="Ex : anniversaire de Raphaëlle, invités…">
+    <div style="height:12px"></div>
+    <button class="btn btn-primary" onclick="saveSpecial('${key}')">Enregistrer</button>`);
+}
+function saveSpecial(key){
+  const v = document.getElementById("sp-name").value.trim();
+  if(!v) return;
+  S.meals[key] = Object.assign({}, S.meals[key]||{}, { special:v, recetteId:null });
+  save(); closeSheet(); render();
+}
+function askExtra() {
+  openSheet(`
+    <h3>Plat hors planning <button class="close" onclick="closeSheet()">✕</button></h3>
+    <input class="field" id="ex-name" placeholder="Ex : gâteau chocolat pour samedi">
+    <div style="height:12px"></div>
+    <button class="btn btn-primary" onclick="saveExtra()">Ajouter</button>`);
+}
+function saveExtra(){
+  const v = document.getElementById("ex-name").value.trim();
+  if(!v) return;
+  S.extras.push({ id:uid(), nom:v }); save(); closeSheet(); render();
+}
+function delExtra(id){ S.extras = S.extras.filter(x=>x.id!==id); save(); render(); }
+function extraToList(id){
+  const x = S.extras.find(e=>e.id===id);
+  mergeIntoList([{ cat:"autres", nom:"Pour : "+x.nom, qte:"" }]);
+  save(); go("courses"); toast("Ajouté à la liste");
+}
+
+// ---------- Génération de la liste (fusion + arrondi) ----------
+function generateList() {
+  const fusion = {};
+  Object.entries(S.meals).forEach(([key, m]) => {
+    if (!m.recetteId || !m.convives || !m.convives.length) return;
+    const r = S.recipes.find(x=>x.id===m.recetteId);
+    if (!r) return;
+    const base = r.baseServings || 2;
+    const f = partsOf(m.convives) / base;
+    (r.ingredients||[]).forEach(ing => {
+      const k = norm(ing.nom) + "|" + ing.unite;
+      (fusion[k] = fusion[k] || { nom:ing.nom, unite:ing.unite, qte:0, cat:guessCat(ing.nom) }).qte += (ing.qte||0) * f;
+    });
+  });
+  const generated = Object.values(fusion).map(v=>({
+    id:uid(), cat:v.cat, nom:v.nom, qte:fmtQte(v.qte, v.unite), checked:false, home:false
+  }));
+  // Report automatique des articles non cochés et non « déjà à la maison »
+  const reportes = S.list.filter(i=>!i.checked && !i.home).map(i=>Object.assign({}, i, {id:uid()}));
+  S.list = [...reportes, ...generated];
+  save(); go("courses");
+  toast("Liste générée : " + generated.length + " article(s) · " + reportes.length + " reporté(s)");
+}
+function norm(s){ return (s||"").toLowerCase().trim().replace(/\s+/g," "); }
+function guessCat(nom){
+  const n = norm(nom);
+  if (/(tomate|concombre|butternut|oignon|citron|pomme|courge|carotte|poireau|salade|epinard|épinard|ail|poivron|courgette|aubergine|banane|orange|poire|fraise|radis|champignon|endive|brocoli|fenouil|navet|betterave|laitue|herbe|persil|basilic)/.test(n)) return "legumes";
+  if (/(jambon|poulet|boeuf|bœuf|porc|saumon|cabillaud|crevette|lard|steak|dinde|veau|agneau|merlu|truite|chorizo|viande|haché|hache)/.test(n)) return "viande";
+  if (/(crème|creme|feta|emmental|beurre|yaourt|lait|fromage|mozzarella|parmesan|chevre|chèvre|œuf|oeuf|ricotta|gruyere|gruyère|reblochon|faisselle|comté|bleu)/.test(n)) return "laitage";
+  if (/(eponge|éponge|papier|lessive|savon|shampooing|dentifrice|vaisselle|poubelle|coton|mouchoir|douche|hygiene|hygiène)/.test(n)) return "menage";
+  return "autres";
+}
+function fmtQte(q, u){
+  if (q<=0) return "";
+  if (!u || u==="pièce" || u==="pièces") {
+    const r = Math.max(1, Math.ceil(q*2)/2);
+    return (r%1 ? r.toFixed(1) : r.toFixed(0)) + " pièce" + (r>1?"s":"");
+  }
+  if (u==="g"||u==="ml"||u==="cl") {
+    const r = q>=100 ? Math.ceil(q/10)*10 : Math.max(1, Math.ceil(q));
+    return r + " " + u;
+  }
+  return (Math.round(q*10)/10) + " " + u;
+}
+function mergeIntoList(items){
+  items.forEach(it=>{
+    const ex = S.list.find(c => norm(c.nom)===norm(it.nom) && !c.checked && !c.home);
+    if (ex) {
+      const a = parseQ(ex.qte), b = parseQ(it.qte);
+      if (a && b && a.unite===b.unite && b.unite) ex.qte = fmtQte(a.q + b.q, b.unite);
+      else if (it.qte) ex.qte = ex.qte ? ex.qte + " + " + it.qte : it.qte;
+    } else {
+      S.list.push({ id:uid(), cat:it.cat||guessCat(it.nom), nom:it.nom, qte:it.qte||"", checked:false, home:false });
+    }
+  });
+}
+function parseQ(s){
+  const m = String(s||"").match(/^([\d.,]+)\s*(.*)$/);
+  return m ? { q:parseFloat(m[1].replace(",",".")), unite:m[2] } : null;
+}
+
+// ============================================================
+// RECETTES
+// ============================================================
+let recFiltres = [];
+function renderRecettes(el){
+  const list = S.recipes.filter(r => !recFiltres.length || (r.tags||[]).some(t=>recFiltres.includes(t)));
+  el.innerHTML = `
+    <div class="row" style="flex-wrap:wrap;gap:6px;margin-bottom:10px">
+      <button class="pill ${!recFiltres.length?'on':''}" style="background:#f5f5f4;color:#57534e" onclick="recFiltres=[];render()">Toutes</button>
+      ${Object.entries(TAGS).map(([id,t])=>`
+        <button class="pill ${recFiltres.includes(id)?'on':''}" style="${t.css}" onclick="toggleRecFiltre('${id}')">${t.label}</button>`).join("")}
+    </div>
+    <button class="btn btn-primary" style="margin-bottom:12px" onclick="askNewRecipe()">+ Nouvelle recette</button>
+    ${list.map(r=>`
+      <div class="card" onclick="openRecipe('${r.id}')" style="cursor:pointer">
+        <div class="row" style="justify-content:space-between">
+          <b style="font-size:14px">${esc(r.nom)}</b>
+          <span style="color:#a8a29e">›</span>
+        </div>
+        <div class="tagrow">${(r.tags||[]).map(t=>`<span class="pill" style="${TAGS[t].css}">${TAGS[t].label}</span>`).join("")}</div>
+      </div>`).join("")}
+    ${!list.length ? `<p style="text-align:center;color:#a8a29e;font-size:13px;padding:20px">Aucune recette${recFiltres.length?" pour ces filtres":""}.</p>` : ""}
+    <p style="font-size:10px;color:#a8a29e;text-align:center">
+      📷/🔗 Extraction IA photo/lien : activable plus tard (clé API Mistral dans Réglages).<br>Saisie manuelle complète en attendant.
+    </p>`;
+}
+function toggleRecFiltre(id){ recFiltres = recFiltres.includes(id)?recFiltres.filter(x=>x!==id):[...recFiltres,id]; render(); }
+
+function openRecipe(id){
+  const r = S.recipes.find(x=>x.id===id);
+  window.recPortions = window.recPortions || 2;
+  const f = window.recPortions / (r.baseServings || 2);
+  const ings = (r.ingredients||[]).map(i=>`
+    <div class="item">
+      <span class="grow nm">${esc(i.nom)}</span>
+      <span style="font-size:12px;color:var(--muted)">${fmtQte((i.qte||0)*f, i.unite)}</span>
+    </div>`).join("");
+  openSheet(`
+    <h3>${esc(r.nom)} <button class="close" onclick="closeSheet()">✕</button></h3>
+    <div class="tagrow" style="margin:0 0 6px">${(r.tags||[]).map(t=>`<span class="pill" style="${TAGS[t].css}">${TAGS[t].label}</span>`).join("")}</div>
+    <p style="font-size:11px;color:var(--muted)">Recette de référence pour <b>${r.baseServings||2} portions</b>.</p>
+    <div class="lbl">Portions pour ce repas (toujours demandé)</div>
+    <div class="card" style="background:#eef2ff;border-color:#c7d2fe">
+      <div class="stepper">
+        <button onclick="recPortions=Math.max(0.5,recPortions-0.5);openRecipe('${r.id}')">−</button>
+        <span class="val">${window.recPortions}</span>
+        <button onclick="recPortions=recPortions+0.5;openRecipe('${r.id}')">+</button>
+        <span style="font-size:10px;color:var(--indigo-dark)">ex : 2 adultes + Raphaëlle = 2,5</span>
+      </div>
+    </div>
+    <div class="lbl">Ingrédients (recalculés pour ${window.recPortions} portion${window.recPortions>1?"s":""})</div>
+    <div class="card">${ings || "<i style='font-size:12px;color:#a8a29e'>Pas d'ingrédients</i>"}</div>
+    <div class="lbl">Étapes</div>
+    <div class="card">${(r.etapes||[]).map((e,i)=>`
+      <div class="row" style="align-items:flex-start;padding:4px 0">
+        <span class="pill" style="background:#f5f5f4;color:#57534e;min-width:20px;text-align:center">${i+1}</span>
+        <span style="font-size:13px">${esc(e)}</span>
+      </div>`).join("") || "<i style='font-size:12px;color:#a8a29e'>Pas d'étapes</i>"}</div>
+    <div class="row">
+      <button class="btn btn-ghost grow" onclick="editRecipe('${r.id}')">✏️ Modifier</button>
+      <button class="btn btn-primary grow" onclick="recipeToList('${r.id}')">🛒 Ajouter aux courses</button>
+    </div>`);
+}
+function recipeToList(id){
+  const r = S.recipes.find(x=>x.id===id);
+  const f = window.recPortions / (r.baseServings||2);
+  mergeIntoList((r.ingredients||[]).map(ing=>({
+    cat:guessCat(ing.nom), nom:ing.nom, qte:fmtQte((ing.qte||0)*f, ing.unite)
+  })));
+  save(); closeSheet(); go("courses"); toast("Ingrédients ajoutés à la liste");
+}
+
+function recipeForm(r, editId){
+  return `
+    <input class="field" id="rf-nom" placeholder="Nom de la recette *" value="${esc(r.nom||"")}" style="margin-bottom:8px">
+    <div class="row" style="margin-bottom:4px">
+      <input class="field grow" id="rf-serv" type="number" step="0.5" min="0.5" value="${r.baseServings||2}">
+      <span style="font-size:11px;color:var(--muted)">portions de<br>référence</span>
+    </div>
+    <div class="lbl">Tags</div>
+    <div class="row" style="flex-wrap:wrap;gap:6px" id="rf-tags">
+      ${Object.entries(TAGS).map(([id,t])=>`<button type="button" class="pill ${((r.tags||[]).includes(id))?'on':''}" style="${t.css}" data-t="${id}" onclick="this.classList.toggle('on')">${t.label}</button>`).join("")}
+    </div>
+    <div class="lbl">Ingrédients <span style="text-transform:none;font-weight:400">(nom | qté | unité)</span></div>
+    <div id="rf-ings">
+      ${((r.ingredients&&r.ingredients.length) ? r.ingredients : [{nom:"",qte:"",unite:"g"}]).map((i)=>`
+        <div class="row" style="margin-bottom:6px">
+          <input class="field grow" placeholder="Ingrédient" value="${esc(i.nom)}" data-f="nom">
+          <input class="field" style="width:76px" type="number" step="any" placeholder="Qté" value="${i.qte||""}" data-f="qte">
+          <input class="field" style="width:62px" placeholder="unité" value="${esc(i.unite||"")}" data-f="unite">
+        </div>`).join("")}
+    </div>
+    <button class="optline" style="border-style:dashed;color:#a8a29e;text-align:center;padding:6px" onclick="addIngRow()">+ Ingrédient</button>
+    <div class="lbl">Étapes</div>
+    <div id="rf-steps">
+      ${((r.etapes&&r.etapes.length) ? r.etapes : [""]).map(e=>`
+        <div class="row" style="margin-bottom:6px">
+          <input class="field grow" placeholder="Étape" value="${esc(e)}" data-f="etape">
+        </div>`).join("")}
+    </div>
+    <button class="optline" style="border-style:dashed;color:#a8a29e;text-align:center;padding:6px" onclick="addStepRow()">+ Étape</button>
+    <div style="height:14px"></div>
+    <button class="btn btn-primary" onclick="saveRecipe('${editId||""}')">${editId?"Enregistrer les modifications":"Enregistrer la recette"}</button>`;
+}
+function addIngRow(){
+  document.getElementById("rf-ings").insertAdjacentHTML("beforeend", `
+    <div class="row" style="margin-bottom:6px">
+      <input class="field grow" placeholder="Ingrédient" data-f="nom">
+      <input class="field" style="width:76px" type="number" step="any" placeholder="Qté" data-f="qte">
+      <input class="field" style="width:62px" placeholder="unité" data-f="unite">
+    </div>`);
+}
+function addStepRow(){
+  document.getElementById("rf-steps").insertAdjacentHTML("beforeend", `
+    <div class="row" style="margin-bottom:6px">
+      <input class="field grow" placeholder="Étape" data-f="etape">
+    </div>`);
+}
+function collectRecipe(){
+  const nom = document.getElementById("rf-nom").value.trim();
+  if (!nom) { toast("Le nom est obligatoire"); return null; }
+  const g = f => [...document.querySelectorAll('[data-f="'+f+'"]')].map(e=>e.value);
+  const ingredients = g("nom").map((n,i)=>({
+    nom:n.trim(), qte:parseFloat(g("qte")[i])||0, unite:g("unite")[i].trim()||"pièce"
+  })).filter(i=>i.nom);
+  const etapes = g("etape").map(s=>s.trim()).filter(Boolean);
+  const tags = [...document.querySelectorAll("#rf-tags .pill.on")].map(b=>b.dataset.t);
+  return { nom, baseServings:parseFloat(document.getElementById("rf-serv").value)||2, ingredients, etapes, tags };
+}
+function saveRecipe(editId){
+  const r = collectRecipe(); if (!r) return;
+  if (editId) { const i = S.recipes.findIndex(x=>x.id===editId); S.recipes[i] = Object.assign({}, S.recipes[i], r); }
+  else S.recipes.push(Object.assign({ id:uid() }, r));
+  save(); closeSheet(); render(); toast("Recette enregistrée ✓");
+}
+function askNewRecipe(){ window.recPortions = 2; openSheet(`
+  <h3>Nouvelle recette <button class="close" onclick="closeSheet()">✕</button></h3>
+  <p style="font-size:12px;color:var(--muted);margin-bottom:10px">
+    📷 Photo / 🔗 Lien : l'extraction IA arrivera avec la clé Mistral (voir Réglages). D'ici là, saisissez la recette ci-dessous — tous les champs sont prêts.
+  </p>
+  ${recipeForm({})}`);
+}
+function editRecipe(id){
+  const r = S.recipes.find(x=>x.id===id);
+  openSheet(`<h3>Modifier la recette <button class="close" onclick="closeSheet()">✕</button></h3>
+    ${recipeForm(r, id)}
+    <div style="height:8px"></div>
+    <button class="btn btn-ghost" style="color:#be123c" onclick="delRecipe('${id}')">🗑 Supprimer la recette</button>`);
+}
+function delRecipe(id){
+  S.recipes = S.recipes.filter(x=>x.id!==id);
+  save(); closeSheet(); render(); toast("Recette supprimée");
+}
+
+// ============================================================
+// COURSES
+// ============================================================
+function renderCourses(el){
+  const inStore = S.list.some(i=>i.checked);
+  const catHtml = CATS.map(c=>{
+    const items = S.list.filter(i=>i.cat===c.id && !i.home);
+    if (!items.length) return "";
+    const rest = items.filter(i=>!i.checked).length;
+    return `<div style="margin-bottom:14px">
+      <div class="row" style="justify-content:space-between;margin-bottom:4px">
+        <b style="font-size:14px">${c.emoji} ${c.label}</b>
+        <span style="font-size:10px;color:#a8a29e">${rest} restant(s)</span>
+      </div>
+      <div class="card">
+        ${items.map(i=>`
+          <div class="item ${i.checked?'done':''}">
+            <button class="checker ${i.checked?'on':''}" onclick="toggleItem('${i.id}','checked')">${i.checked?"✓":""}</button>
+            <span class="grow nm" style="font-size:13px" onclick="toggleItem('${i.id}','checked')">${esc(i.nom)}</span>
+            <span style="font-size:12px;color:var(--muted)">${esc(i.qte||"")}</span>
+            <button class="checker" style="border-color:#a7f3d0;background:#fff" title="Déjà à la maison" onclick="toggleItem('${i.id}','home')">🏠</button>
+          </div>`).join("")}
+      </div></div>`;
+  }).join("");
+  const maison = S.list.filter(i=>i.home);
+  el.innerHTML = `
+    ${inStore ? `<div class="card" style="background:#ecfdf5;border-color:#a7f3d0;color:#065f46;font-size:12px;font-weight:600">📶 Mode magasin : tout fonctionne hors ligne, la synchro reprendra au retour du réseau.</div>` : ""}
+    <div class="row" style="margin-bottom:12px">
+      <input class="field grow" id="nl-name" placeholder="Ajouter un article…" onkeydown="if(event.key==='Enter')addManual()">
+      <button class="btn btn-primary" style="width:auto;padding:10px 16px" onclick="addManual()">+</button>
+      <button class="btn btn-ghost" style="width:auto;padding:10px 12px" onclick="toast('📷 Photo de liste manuscrite : extraction IA bientôt disponible')">📷</button>
+    </div>
+    ${catHtml || `<p style="text-align:center;color:#a8a29e;font-size:13px;padding:26px">Liste vide — générez-la depuis le Planning ✨</p>`}
+    ${maison.length ? `<div class="lbl">Déjà à la maison 🏠</div><div class="card">
+      ${maison.map(i=>`
+        <div class="item done">
+          <span class="checker on" style="background:#a7f3d0;border-color:#a7f3d0">🏠</span>
+          <span class="grow nm">${esc(i.nom)}</span>
+          <button class="checker" style="background:#fff;color:#78716c" onclick="toggleItem('${i.id}','home')" title="Remettre dans la liste">↩</button>
+        </div>`).join("")}
+    </div>` : ""}
+    <div style="height:10px"></div>
+    <button class="btn btn-ghost" onclick="clearChecked()">🧹 Vider les articles cochés (fin de courses)</button>
+    <p style="font-size:10px;color:#a8a29e;text-align:center;margin-top:8px">
+      Les non-cochés sont automatiquement reportés quand vous régénérez la liste depuis le Planning.
+    </p>`;
+}
+function toggleItem(id, field){
+  const i = S.list.find(x=>x.id===id); i[field] = !i[field];
+  if (field==="home" && i.home) i.checked = false;
+  save(); render();
+}
+function addManual(){
+  const el = document.getElementById("nl-name");
+  const v = el.value.trim(); if(!v) return;
+  mergeIntoList([{ nom:v, qte:"" }]);
+  save(); render();
+}
+function clearChecked(){
+  S.list = S.list.filter(i=>!i.checked);
+  save(); render(); toast("Liste nettoyée");
+}
+
+// ============================================================
+// RÉGLAGES
+// ============================================================
+function renderReglages(el){
+  el.innerHTML = `
+    <div class="card">
+      <div class="lbl" style="margin-top:0">Foyer</div>
+      <p style="font-size:13px">Code foyer : <b>${FOYER}</b><br>
+      <span style="font-size:11px;color:var(--muted)">Ta compagne utilisera ce même code : planning, recettes et listes seront partagés.</span></p>
+    </div>
+    <div class="card">
+      <div class="lbl" style="margin-top:0">Synchronisation</div>
+      <p style="font-size:13px" id="sync-status">…</p>
+      <div style="height:8px"></div>
+      <button class="btn btn-ghost" onclick="pushNow(true)">🔄 Synchroniser maintenant</button>
+    </div>
+    <div class="card">
+      <div class="lbl" style="margin-top:0">Personnes du foyer</div>
+      ${PERSONNES.map(p=>`<p style="font-size:13px">${p.emoji} <b>${p.label}</b> — ${p.parts} portion(s) par repas</p>`).join("")}
+    </div>
+    <div class="card">
+      <div class="lbl" style="margin-top:0">Données</div>
+      <button class="btn btn-ghost" onclick="exportData()">⬇️ Exporter mes données (JSON)</button>
+      <div style="height:8px"></div>
+      <button class="btn btn-ghost" style="color:#be123c" onclick="if(confirm('Tout effacer (planning, recettes, listes) ?'))wipe()">🗑 Tout effacer</button>
+    </div>
+    <p style="font-size:10px;color:#a8a29e;text-align:center;padding:6px 0 14px">Menus & Courses v1.0 — Gabriel &amp; famille</p>`;
+  updateSyncStatus();
+}
+function exportData(){
+  const blob = new Blob([JSON.stringify(S,null,2)], {type:"application/json"});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = "menus-courses-"+todayISO()+".json"; a.click();
+}
+function wipe(){ lsDel(LS_KEY); S = loadState(); save(); render(); toast("Données effacées"); }
+
+// ============================================================
+// SYNCHRONISATION (Supabase) — locale d'abord, cloud ensuite
+// ============================================================
+let sb = null, pushTimer = null;
+async function initSync(){
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) { updateSyncStatus(); return; }
+  try {
+    await loadScript("https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js");
+    sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    await pull();
+    render();
+    sb.channel("foyer-"+FOYER).on("postgres_changes",
+      { event:"*", schema:"public", table:"app_state", filter:"foyer=eq."+FOYER },
+      (payload) => { if (payload.new && payload.new.foyer===FOYER) applyRemote(payload.new.data); }
+    ).subscribe();
+  } catch(e) { console.warn("Sync indisponible (hors ligne ou mode local)", e); }
+  updateSyncStatus();
+}
+function loadScript(src){
+  return new Promise((ok,ko)=>{
+    if (window.supabase) return ok();
+    const s = document.createElement("script"); s.src = src; s.onload = ok; s.onerror = ko;
+    document.head.appendChild(s);
+  });
+}
+async function pull(){
+  if (!sb) return;
+  const { data } = await sb.from("app_state").select("data, updated_at").eq("foyer", FOYER).maybeSingle();
+  if (data) applyRemote(data.data);
+}
+function applyRemote(remote){
+  if (!remote) return;
+  // « dernière écriture gagne » — suffisant pour un foyer de 2 personnes
+  if ((remote._rev||0) > (S._rev||0)) {
+    S = Object.assign(structuredClone(DEFAULT_STATE), remote);
+    render();
+  }
+}
+function schedulePush(){ clearTimeout(pushTimer); pushTimer = setTimeout(pushNow, 1200); }
+async function pushNow(manual){
+  if (!sb) { if (manual) toast("Mode local — partage temps réel dès que les clés Supabase seront configurées"); updateSyncStatus(); return; }
+  S._rev = Date.now();
+  try {
+    await sb.from("app_state").upsert({ foyer:FOYER, data:S, updated_at:new Date().toISOString() });
+    if (manual) toast("Synchronisé avec le foyer ✓");
+  } catch(e) { if (manual) toast("Synchro impossible : hors ligne ?"); }
+  updateSyncStatus();
+}
+function updateSyncStatus(){
+  const el = document.getElementById("sync-status"); if(!el) return;
+  el.innerHTML = sb
+    ? `✅ Connectée — planning, recettes et listes partagés en temps réel avec ta compagne.`
+    : `📱 Mode local (données sur cet appareil, hors ligne OK).<br><span style="font-size:11px;color:var(--muted)">Pour le partage temps réel : crée le projet Supabase, colle l'URL et la clé anon dans les 2 lignes SUPABASE_* du fichier, et déployez sur GitHub Pages. Guide détaillé fourni.</span>`;
+}
+window.addEventListener("online", ()=>{ document.getElementById("syncbar").style.display="none"; pushNow(); });
+window.addEventListener("offline", ()=>{ document.getElementById("syncbar").style.display="block"; });
+
+// ---------- Démarrage : 2 recettes d'exemple ----------
+if (!S.recipes.length) {
+  S.recipes = [
+    { id:uid(), nom:"Pâtes carbonara maison", baseServings:2, tags:["rapide"],
+      ingredients:[{nom:"Spaghetti",qte:200,unite:"g"},{nom:"Lardons",qte:150,unite:"g"},{nom:"Crème fraîche",qte:20,unite:"cl"},{nom:"Parmesan",qte:50,unite:"g"}],
+      etapes:["Cuire les pâtes al dente","Faire revenir les lardons","Mélanger hors du feu avec la crème et le parmesan"] },
+    { id:uid(), nom:"Riz aux légumes du soleil", baseServings:2, tags:["vege","ete"],
+      ingredients:[{nom:"Riz",qte:180,unite:"g"},{nom:"Courgette",qte:1,unite:"pièce"},{nom:"Tomates cerises",qte:250,unite:"g"},{nom:"Feta",qte:100,unite:"g"}],
+      etapes:["Rincer le riz","Cuire 12 min à couvert","Poêler les légumes","Mélanger, ajouter la feta"] },
+  ];
+  save();
+}
+initSync();
+try { render(); }
+catch(e) {
+  document.getElementById("app").innerHTML =
+    "<div class='card' style='color:#be123c;font-size:12px'><b>Erreur d'affichage :</b> " +
+    String(e.message || e) + "</div>";
+  console.error(e);
+}
+</script>
+</body>
+</html>
