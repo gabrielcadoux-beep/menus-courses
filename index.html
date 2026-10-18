@@ -8,7 +8,7 @@
 <style>
   * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
   :root { --indigo:#4f46e5; --indigo-dark:#3730a3; --bg:#f5f5f4; --card:#ffffff; --txt:#1c1917; --muted:#78716c; --line:#e7e5e4; --green:#059669; --amber:#d97706; }
-  body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background:var(--bg); color:var(--txt); max-width:480px; margin:0 auto; min-height:100vh; padding-bottom:76px; }
+  body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background:var(--bg); color:var(--txt); max-width:480px; margin:0 auto; min-height:100vh; }
   header { position:sticky; top:0; z-index:20; background:var(--card); border-bottom:1px solid var(--line); padding:14px 16px 12px; display:flex; justify-content:space-between; align-items:center; }
   header h1 { font-size:19px; font-weight:800; }
   header .sub { font-size:11px; color:var(--muted); margin-top:2px; }
@@ -22,19 +22,18 @@
   .pill { font-size:10px; padding:3px 8px; border-radius:99px; font-weight:600; display:inline-block; }
   .pill.on { outline:2px solid currentColor; outline-offset:1px; }
   .card { background:var(--card); border:1px solid var(--line); border-radius:16px; padding:12px; margin-bottom:10px; }
-  .grid { display:grid; grid-template-columns:repeat(7,1fr); gap:4px; }
-  .grid .h { font-size:10px; font-weight:700; color:var(--muted); text-align:center; padding:2px 0; }
-  .grid .rl { font-size:9px; font-weight:700; color:#a8a29e; display:flex; align-items:center; justify-content:center; writing-mode:vertical-rl; transform:rotate(180deg); }
-  .cell { min-height:56px; border-radius:10px; border:none; font-size:9.5px; font-weight:600; cursor:pointer; padding:4px; text-align:left; line-height:1.15; overflow:hidden; }
+  .dayrow { display:grid; grid-template-columns:52px 1fr 1fr; gap:6px; margin-bottom:6px; align-items:stretch; }
+  .daylbl { font-size:11px; font-weight:700; color:var(--muted); display:flex; align-items:center; justify-content:center; background:#fafaf9; border-radius:10px; }
+  .cell { min-height:52px; border-radius:10px; border:none; font-size:10px; font-weight:600; cursor:pointer; padding:5px; text-align:left; line-height:1.2; overflow:hidden; }
   .cell.empty { border:2px dashed var(--line); color:#d6d3d1; display:flex; align-items:center; justify-content:center; font-size:18px; background:transparent; }
   .cell.filled { background:#eef2ff; color:#3730a3; }
   .cell.special { background:#f5f3ff; color:#6d28d9; }
   .cell.nobody { background:#f5f5f4; color:#a8a29e; display:flex; align-items:center; justify-content:center; }
   .cell .who { display:block; font-size:8.5px; color:var(--muted); font-weight:500; }
-  nav.bottom { position:fixed; bottom:0; left:50%; transform:translateX(-50%); width:100%; max-width:480px; background:#fff; border-top:1px solid var(--line); display:flex; z-index:30; }
-  nav.bottom button { flex:1; padding:9px 0 11px; background:none; border:none; font-size:10.5px; font-weight:600; color:#a8a29e; cursor:pointer; }
-  nav.bottom button.on { color:var(--indigo); }
-  nav.bottom button .ic { display:block; font-size:20px; margin:0 auto 2px; width:fit-content; }
+  nav.top { position:sticky; top:0; z-index:25; width:100%; max-width:480px; background:#fff; border-bottom:1px solid var(--line); display:flex; }
+  nav.top button { flex:1; padding:8px 0 10px; background:none; border:none; font-size:10.5px; font-weight:600; color:#a8a29e; cursor:pointer; }
+  nav.top button.on { color:var(--indigo); }
+  nav.top button .ic { display:block; font-size:19px; margin:0 auto 2px; width:fit-content; }
   .sheet-bkg { position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:40; display:flex; align-items:flex-end; justify-content:center; }
   .sheet { background:#fff; width:100%; max-width:480px; border-radius:24px 24px 0 0; padding:20px 18px 26px; max-height:86vh; overflow-y:auto; }
   .sheet h3 { font-size:17px; font-weight:800; margin-bottom:12px; display:flex; justify-content:space-between; align-items:center; }
@@ -71,8 +70,8 @@
   </div>
   <div class="avatars" id="h-avatars"></div>
 </header>
+<nav class="top" id="nav"></nav>
 <main id="app"></main>
-<nav class="bottom" id="nav"></nav>
 <div id="sheet-holder"></div>
 <div class="toast" id="toast"></div>
 
@@ -98,18 +97,25 @@ const PERSONNES = [
   { id:"raphaelle", label:"Raphaëlle", emoji:"👧", parts:0.5 },
 ];
 const TAGS = {
-  vege:   { label:"Végétarien",    css:"background:#d1fae5;color:#047857" },
-  rapide: { label:"Rapide <30min", css:"background:#fef3c7;color:#b45309" },
-  viande: { label:"Viande",        css:"background:#ffe4e6;color:#be123c" },
-  poisson:{ label:"Poisson",       css:"background:#e0f2fe;color:#0369a1" },
-  hiver:  { label:"Hiver",         css:"background:#e0e7ff;color:#4338ca" },
-  ete:    { label:"Été",            css:"background:#ecfccb;color:#4d7c0f" },
+  vege:       { label:"Végétarien",    css:"background:#d1fae5;color:#047857" },
+  rapide:     { label:"Rapide <30min", css:"background:#fef3c7;color:#b45309" },
+  viande:     { label:"Viande",        css:"background:#ffe4e6;color:#be123c" },
+  poisson:    { label:"Poisson",       css:"background:#e0f2fe;color:#0369a1" },
+  hiver:      { label:"Hiver",         css:"background:#e0e7ff;color:#4338ca" },
+  ete:        { label:"Été",            css:"background:#ecfccb;color:#4d7c0f" },
+  automne:    { label:"Automne",       css:"background:#ffedd5;color:#c2410c" },
+  printemps:  { label:"Printemps",     css:"background:#dcfce7;color:#15803d" },
+  dessert:    { label:"Dessert",       css:"background:#fce7f3;color:#be185d" },
+  favoris:    { label:"⭐ Favoris",    css:"background:#fef9c3;color:#a16207" },
 };
 const CATS = [
   { id:"legumes", label:"Légumes & Fruits",   emoji:"🥕" },
   { id:"viande",  label:"Viande & Poisson",   emoji:"🥩" },
   { id:"laitage", label:"Laitage & Crèmerie", emoji:"🧀" },
-  { id:"menage",  label:"Ménage & Hygiène",   emoji:"🧼" },
+  { id:"secs",    label:"Produits secs",      emoji:"🥜" },
+  { id:"menage",  label:"Ménage",            emoji:"🧹" },
+  { id:"hygiene", label:"Hygiène",           emoji:"🧼" },
+  { id:"bebe",    label:"Bébé",               emoji:"🍼" },
   { id:"autres",  label:"Autres",             emoji:"📦" },
 ];
 
@@ -201,11 +207,12 @@ function renderPlanning(el) {
     const d = new Date(start + "T12:00:00"); d.setDate(d.getDate()+i);
     return d.toISOString().slice(0,10);
   });
-  let cells = `<div></div>` + days.map(d=>`<div class="h">${fmtD(d)}</div>`).join("");
-  ["midi","soir"].forEach(repas => {
-    cells += `<div class="rl">${repas==="midi"?"MIDI":"SOIR"}</div>`;
-    days.forEach(d => { cells += mealCell(d, repas); });
-  });
+  const rows = days.map(d=>`
+    <div class="dayrow">
+      <div class="daylbl">${fmtD(d)}</div>
+      ${mealCell(d,"midi")}
+      ${mealCell(d,"soir")}
+    </div>`).join("");
 
   el.innerHTML = `
     <div class="row" style="margin-bottom:10px">
@@ -213,7 +220,7 @@ function renderPlanning(el) {
       <input type="date" class="field grow" style="padding:6px 10px;font-size:13px" value="${start}"
              onchange="setWeekStart(this.value)">
     </div>
-    <div class="grid">${cells}</div>
+    ${rows}
     <div class="lbl" style="margin-top:14px">Hors planning (gâteau, invités…)</div>
     ${S.extras.map(x=>`
       <div class="row card" style="justify-content:space-between;padding:9px 12px;margin-bottom:8px">
@@ -266,7 +273,8 @@ function editMeal(d, repas) {
           ${esc(r.nom)}
           <span class="tagrow">${(r.tags||[]).map(t=>`<span class="pill" style="${TAGS[t].css}">${TAGS[t].label}</span>`).join("")}</span>
         </button>`).join("")}
-      ${S.recipes.length ? "" : `<p style="font-size:12px;color:var(--muted)">Aucune recette — ajoutez-en dans l'onglet Recettes 👨‍🍳</p>`}
+      ${S.recipes.length ? "" : `<p style="font-size:12px;color:var(--muted)">Aucune recette — créez-en une juste en dessous 👇</p>`}
+      <button class="optline" style="color:var(--indigo);text-align:center;border-color:#c7d2fe" onclick="askNewRecipeFromMeal('${key}')">＋ Créer une nouvelle recette pour ce repas…</button>
       <button class="optline" style="color:#7c3aed;text-align:center;border-color:#ddd6fe" onclick="askSpecial('${key}')">🎉 Repas spécial (anniversaire, invités…)</button>
     ` : ""}
   `);
@@ -340,10 +348,13 @@ function generateList() {
 function norm(s){ return (s||"").toLowerCase().trim().replace(/\s+/g," "); }
 function guessCat(nom){
   const n = norm(nom);
-  if (/(tomate|concombre|butternut|oignon|citron|pomme|courge|carotte|poireau|salade|epinard|épinard|ail|poivron|courgette|aubergine|banane|orange|poire|fraise|radis|champignon|endive|brocoli|fenouil|navet|betterave|laitue|herbe|persil|basilic)/.test(n)) return "legumes";
-  if (/(jambon|poulet|boeuf|bœuf|porc|saumon|cabillaud|crevette|lard|steak|dinde|veau|agneau|merlu|truite|chorizo|viande|haché|hache)/.test(n)) return "viande";
-  if (/(crème|creme|feta|emmental|beurre|yaourt|lait|fromage|mozzarella|parmesan|chevre|chèvre|œuf|oeuf|ricotta|gruyere|gruyère|reblochon|faisselle|comté|bleu)/.test(n)) return "laitage";
-  if (/(eponge|éponge|papier|lessive|savon|shampooing|dentifrice|vaisselle|poubelle|coton|mouchoir|douche|hygiene|hygiène)/.test(n)) return "menage";
+  if (/(bebe|bébé|couche|lait infantile|petit pot|baby|biberon|coton tige bebe)/.test(n)) return "bebe";
+  if (/(riz|pate|pâtes|noix|noisette|amande|farine|sucre|quinoa|boulgour|semoule|lentille|pois chiche|couscous|cereale|céréale|huile|vinaigre|epice|épice|sel|miel|confiture|chocolat|cacao|levure|feuille brick|tortilla|gnocchi)/.test(n)) return "secs";
+  if (/(tomate|concombre|butternut|oignon|citron|pomme|courge|carotte|poireau|salade|epinard|épinard|ail|poivron|courgette|aubergine|banane|orange|poire|fraise|radis|champignon|endive|brocoli|fenouil|navet|betterave|laitue|herbe|persil|basilic|avocat|mangue|melon|raisin|pruneau|abricot|peche|pêche|nectarine)/.test(n)) return "legumes";
+  if (/(jambon|poulet|boeuf|bœuf|porc|saumon|cabillaud|crevette|lard|steak|dinde|veau|agneau|merlu|truite|chorizo|viande|haché|hache|saucisse|cotelette|côtelette)/.test(n)) return "viande";
+  if (/(crème|creme|feta|emmental|beurre|yaourt|lait|fromage|mozzarella|parmesan|chevre|chèvre|œuf|oeuf|ricotta|gruyere|gruyère|reblochon|faisselle|comté|bleu|tome|creme dessert|chantilly)/.test(n)) return "laitage";
+  if (/(savon|shampooing|dentifrice|douche|brosse|coton|mouchoir|deodorant|déodorant|hygiene|hygiène|bain|intime|maquillage|rasoir|papier toilette)/.test(n)) return "hygiene";
+  if (/(eponge|éponge|papier|lessive|vaisselle|poubelle|sac|seau|nettoyant|grille|aluminium|film|essuie)/.test(n)) return "menage";
   return "autres";
 }
 function fmtQte(q, u){
@@ -415,6 +426,9 @@ function openRecipe(id){
   openSheet(`
     <h3>${esc(r.nom)} <button class="close" onclick="closeSheet()">✕</button></h3>
     <div class="tagrow" style="margin:0 0 6px">${(r.tags||[]).map(t=>`<span class="pill" style="${TAGS[t].css}">${TAGS[t].label}</span>`).join("")}</div>
+    ${r.source ? (/^https?:\/\//.test(r.source)
+      ? `<p style="font-size:11px;margin-bottom:6px">🔗 Source : <a href="${esc(r.source)}" target="_blank" rel="noopener" style="color:var(--indigo)">${esc(r.source)}</a></p>`
+      : `<p style="font-size:11px;color:var(--muted);margin-bottom:6px">📖 Source : ${esc(r.source)}</p>`) : ""}
     <p style="font-size:11px;color:var(--muted)">Recette de référence pour <b>${r.baseServings||2} portions</b>.</p>
     <div class="lbl">Portions pour ce repas (toujours demandé)</div>
     <div class="card" style="background:#eef2ff;border-color:#c7d2fe">
@@ -450,6 +464,7 @@ function recipeToList(id){
 function recipeForm(r, editId){
   return `
     <input class="field" id="rf-nom" placeholder="Nom de la recette *" value="${esc(r.nom||"")}" style="margin-bottom:8px">
+    <input class="field" id="rf-source" placeholder="Source : lien du site web, ou nom du livre + n° de page" value="${esc(r.source||"")}" style="margin-bottom:8px">
     <div class="row" style="margin-bottom:4px">
       <input class="field grow" id="rf-serv" type="number" step="0.5" min="0.5" value="${r.baseServings||2}">
       <span style="font-size:11px;color:var(--muted)">portions de<br>référence</span>
@@ -502,20 +517,33 @@ function collectRecipe(){
   })).filter(i=>i.nom);
   const etapes = g("etape").map(s=>s.trim()).filter(Boolean);
   const tags = [...document.querySelectorAll("#rf-tags .pill.on")].map(b=>b.dataset.t);
-  return { nom, baseServings:parseFloat(document.getElementById("rf-serv").value)||2, ingredients, etapes, tags };
+  const source = document.getElementById("rf-source").value.trim();
+  return { nom, baseServings:parseFloat(document.getElementById("rf-serv").value)||2, ingredients, etapes, tags, source };
 }
 function saveRecipe(editId){
   const r = collectRecipe(); if (!r) return;
-  if (editId) { const i = S.recipes.findIndex(x=>x.id===editId); S.recipes[i] = Object.assign({}, S.recipes[i], r); }
-  else S.recipes.push(Object.assign({ id:uid() }, r));
+  let newId;
+  if (editId) { const i = S.recipes.findIndex(x=>x.id===editId); S.recipes[i] = Object.assign({}, S.recipes[i], r); newId = editId; }
+  else { newId = uid(); S.recipes.push(Object.assign({ id:newId }, r)); }
+  // Si la recette a été créée depuis le planning, l'assigner au repas
+  if (window._mealKey) {
+    S.meals[window._mealKey] = Object.assign({}, S.meals[window._mealKey]||{}, { recetteId:newId, special:null });
+    window._mealKey = null;
+  }
   save(); closeSheet(); render(); toast("Recette enregistrée ✓");
 }
-function askNewRecipe(){ window.recPortions = 2; openSheet(`
+function askNewRecipe(){ window.recPortions = 2; window._mealKey = null; openSheet(`
   <h3>Nouvelle recette <button class="close" onclick="closeSheet()">✕</button></h3>
   <p style="font-size:12px;color:var(--muted);margin-bottom:10px">
     📷 Photo / 🔗 Lien : l'extraction IA arrivera avec la clé Mistral (voir Réglages). D'ici là, saisissez la recette ci-dessous — tous les champs sont prêts.
   </p>
   ${recipeForm({})}`);
+}
+function askNewRecipeFromMeal(key){
+  window._mealKey = key; window.recPortions = 2;
+  openSheet(`
+    <h3>Nouvelle recette pour ce repas <button class="close" onclick="closeSheet()">✕</button></h3>
+    ${recipeForm({})}`);
 }
 function editRecipe(id){
   const r = S.recipes.find(x=>x.id===id);
@@ -557,8 +585,8 @@ function renderCourses(el){
   el.innerHTML = `
     ${inStore ? `<div class="card" style="background:#ecfdf5;border-color:#a7f3d0;color:#065f46;font-size:12px;font-weight:600">📶 Mode magasin : tout fonctionne hors ligne, la synchro reprendra au retour du réseau.</div>` : ""}
     <div class="row" style="margin-bottom:12px">
-      <input class="field grow" id="nl-name" placeholder="Ajouter un article…" onkeydown="if(event.key==='Enter')addManual()">
-      <button class="btn btn-primary" style="width:auto;padding:10px 16px" onclick="addManual()">+</button>
+      <input class="field grow" id="nl-name" placeholder="Ajouter un article…" onkeydown="if(event.key==='Enter')askAddManual()">
+      <button class="btn btn-primary" style="width:auto;padding:10px 16px" onclick="askAddManual()">+</button>
       <button class="btn btn-ghost" style="width:auto;padding:10px 12px" onclick="toast('📷 Photo de liste manuscrite : extraction IA bientôt disponible')">📷</button>
     </div>
     ${catHtml || `<p style="text-align:center;color:#a8a29e;font-size:13px;padding:26px">Liste vide — générez-la depuis le Planning ✨</p>`}
@@ -580,6 +608,33 @@ function toggleItem(id, field){
   const i = S.list.find(x=>x.id===id); i[field] = !i[field];
   if (field==="home" && i.home) i.checked = false;
   save(); render();
+}
+function askAddManual(){
+  const el = document.getElementById("nl-name");
+  const nom = el.value.trim(); if(!nom) return;
+  el.value = "";
+  window._manualNom = nom;
+  openSheet(`
+    <h3>« ${esc(nom)} » <button class="close" onclick="closeSheet()">✕</button></h3>
+    <div class="row">
+      <input class="field grow" type="number" step="any" min="0" id="nl-qte" placeholder="Quantité (ex : 500)" autofocus>
+      <input class="field" style="width:110px" id="nl-unite" placeholder="Unité (g, ml, pièce…)">
+    </div>
+    <div style="height:10px"></div>
+    <button class="btn btn-primary" onclick="confirmManual()">Ajouter à la liste</button>
+    <div style="height:8px"></div>
+    <button class="btn btn-ghost" onclick="addManualNoQty()">Ajouter sans quantité</button>`);
+}
+function confirmManual(){
+  const q = parseFloat(document.getElementById("nl-qte").value);
+  const u = document.getElementById("nl-unite").value.trim() || "pièce";
+  if (!q || q<=0) { toast("Quantité invalide — ou choisissez « sans quantité »"); return; }
+  mergeIntoList([{ nom:window._manualNom, qte:fmtQte(q, u) }]);
+  save(); closeSheet(); render(); toast("Article ajouté ✓");
+}
+function addManualNoQty(){
+  mergeIntoList([{ nom:window._manualNom, qte:"" }]);
+  save(); closeSheet(); render(); toast("Article ajouté ✓");
 }
 function addManual(){
   const el = document.getElementById("nl-name");
