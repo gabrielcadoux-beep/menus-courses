@@ -55,6 +55,7 @@
   .item.done { opacity:.4; }
   .item.done .nm { text-decoration:line-through; }
   .syncbar { position:fixed; top:0; left:50%; transform:translateX(-50%); z-index:60; background:#065f46; color:#fff; font-size:11px; font-weight:600; padding:5px 14px; border-radius:0 0 12px 12px; display:none; }
+  .hidden { display:none !important; }
   .stepper { display:flex; align-items:center; gap:14px; }
   .stepper button { width:38px; height:38px; border-radius:50%; border:none; background:#fff; font-size:20px; font-weight:700; color:var(--indigo); box-shadow:0 1px 4px rgba(0,0,0,.15); cursor:pointer; }
   .stepper .val { font-size:22px; font-weight:800; width:52px; text-align:center; }
@@ -135,6 +136,7 @@ const DEFAULT_STATE = {
   extras: [],        // plats hors planning [{id, nom}]
   recipes: [],
   list: [],          // [{id, cat, nom, qte, checked, home}]
+  settings: {},      // {mistralKey}
 };
 let S = loadState();
 let nav = "planning";
@@ -534,10 +536,113 @@ function saveRecipe(editId){
 }
 function askNewRecipe(){ window.recPortions = 2; window._mealKey = null; openSheet(`
   <h3>Nouvelle recette <button class="close" onclick="closeSheet()">✕</button></h3>
-  <p style="font-size:12px;color:var(--muted);margin-bottom:10px">
-    📷 Photo / 🔗 Lien : l'extraction IA arrivera avec la clé Mistral (voir Réglages). D'ici là, saisissez la recette ci-dessous — tous les champs sont prêts.
-  </p>
+  <div class="lbl" style="margin-top:0">Extraction automatique (IA)</div>
+  <div class="row" style="margin-bottom:6px">
+    <input class="field grow" id="nr-link" placeholder="Collez le lien de la recette (https://…)" onkeydown="if(event.key==='Enter')extractFromLink()">
+    <button class="btn btn-primary" style="width:auto;padding:10px 14px;font-size:12px" onclick="extractFromLink()">✨</button>
+  </div>
+  <div class="row" style="margin-bottom:8px">
+    <button class="btn btn-ghost grow" onclick="document.getElementById('nr-photo').click()">📷 Prendre / choisir une photo</button>
+    <input type="file" id="nr-photo" accept="image/*" capture="environment" class="hidden" onchange="extractFromPhoto(this)">
+  </div>
+  <p id="nr-status" style="font-size:11px;color:var(--muted)"></p>
+  <div class="lbl">Ou saisie manuelle</div>
   ${recipeForm({})}`);
+}
+function setExtractStatus(msg){
+  const el = document.getElementById("nr-status");
+  if (el) { el.textContent = msg; }
+  else toast(msg);
+}
+function mistralKey(){ return (S.settings && S.settings.mistralKey) || ""; }
+async function mistralJSON(text, source){
+  // Structure un texte de recette en JSON via l'IA Mistral
+  const r = await fetch("https://api.mistral.ai/v1/chat/completions", {
+    method:"POST",
+    headers:{ "Content-Type":"application/json", "Authorization":"Bearer " + mistralKey() },
+    body: JSON.stringify({
+      model:"mistral-small-latest",
+      messages:[
+        { role:"system", content:"Tu extrais une recette de cuisine. Réponds UNIQUEMENT avec du JSON valide, sans markdown, au format {\"nom\":\"\", \"baseServings\":2, \"ingredients\":[{\"nom\":\"\",\"qte\":0,\"unite\":\"g\"}], \"etapes\":[\"\"], \"tags\":[]}. Unités possibles : g, ml, cl, pièce. Tags possibles : vege, rapide, viande, poisson, hiver, ete, automne, printemps, dessert, favoris. Si une information est absente, laisse le champ vide ou 0." },
+        { role:"user", content:"Source : " + source + "\n\n" + text }
+      ],
+      temperature:0
+    })
+  });
+  if (!r.ok) throw new Error("API Mistral : " + r.status);
+  const j = await r.json();
+  let txt = j.choices[0].message.content.trim();
+  if (txt.startsWith("```")) txt = txt.replace(/```[a-z]*\n?/g,"").trim();
+  const start = txt.indexOf("{"), end = txt.lastIndexOf("}");
+  return JSON.parse(txt.slice(start, end+1));
+}
+function fillDraft(d, source){
+  window._draft = {
+    nom: d.nom || "",
+    baseServings: d.baseServings || 2,
+    ingredients: (d.ingredients||[]).map(i=>({ nom:i.nom||"", qte:i.qte||0, unite:i.unite||"pièce" })).filter(i=>i.nom),
+    etapes: d.etapes || [],
+    tags: (d.tags||[]).filter(t=>TAGS[t]),
+    source: source || ""
+  };
+  openSheet(`
+    <h3>Recette extraite — vérifiez puis enregistrez <button class="close" onclick="closeSheet()">✕</button></h3>
+    <p style="font-size:11px;color:var(--muted);margin-bottom:6px">✨ L'IA a lu la source : relisez, corrigez, puis enregistrez.</p>
+    ${recipeForm(window._draft)}`);
+}
+async function extractFromLink(){
+  const url = (document.getElementById("nr-link").value||"").trim();
+  if (!url) return;
+  if (!mistralKey()) { toast("Renseignez d'abord la clé Mistral dans Réglages ⚙️"); return; }
+  setExtractStatus("⏳ Extraction en cours…");
+  try {
+    let text;
+    if (/\.(jpe?g|png|webp|pdf)(\?|$)/i.test(url)) {
+      text = await ocrDocument(url);
+    } else {
+      const r = await fetch("https://r.jina.ai/" + url);
+      if (!r.ok) throw new Error("lecture du lien impossible");
+      text = await r.text();
+      if (text.length > 12000) text = text.slice(0, 12000);
+    }
+    const d = await mistralJSON(text, url);
+    fillDraft(d, url);
+  } catch(e) { setExtractStatus("❌ " + (e.message||"Extraction impossible. Vérifiez le lien et la clé Mistral.")); }
+}
+async function extractFromPhoto(input){
+  const f = input.files && input.files[0];
+  if (!f) return;
+  if (!mistralKey()) { toast("Renseignez d'abord la clé Mistral dans Réglages ⚙️"); input.value=""; return; }
+  setExtractStatus("⏳ Lecture de la photo…");
+  try {
+    const dataUrl = await new Promise((ok,ko)=>{
+      const fr = new FileReader();
+      fr.onload = ()=>ok(fr.result); fr.onerror = ko;
+      fr.readAsDataURL(f);
+    });
+    const r = await fetch("https://api.mistral.ai/v1/ocr", {
+      method:"POST",
+      headers:{ "Content-Type":"application/json", "Authorization":"Bearer " + mistralKey() },
+      body: JSON.stringify({ model:"mistral-ocr-latest", pages:[{ type:"image_url", image_url: dataUrl }] })
+    });
+    if (!r.ok) throw new Error("OCR : " + r.status);
+    const j = await r.json();
+    const text = (j.pages||[]).map(p=>p.markdown||"").join("\n");
+    if (!text.trim()) throw new Error("photo illisible");
+    const d = await mistralJSON(text, "photo");
+    fillDraft(d, "");
+  } catch(e) { setExtractStatus("❌ " + (e.message||"Extraction impossible. Vérifiez la photo et la clé Mistral.")); }
+  input.value = "";
+}
+async function ocrDocument(url){
+  const r = await fetch("https://api.mistral.ai/v1/ocr", {
+    method:"POST",
+    headers:{ "Content-Type":"application/json", "Authorization":"Bearer " + mistralKey() },
+    body: JSON.stringify({ model:"mistral-ocr-latest", pages:[{ type:"document_url", document_url: url }] })
+  });
+  if (!r.ok) throw new Error("OCR : " + r.status);
+  const j = await r.json();
+  return (j.pages||[]).map(p=>p.markdown||"").join("\n");
 }
 function askNewRecipeFromMeal(key){
   window._mealKey = key; window.recPortions = 2;
@@ -668,6 +773,21 @@ function renderReglages(el){
       ${PERSONNES.map(p=>`<p style="font-size:13px">${p.emoji} <b>${p.label}</b> — ${p.parts} portion(s) par repas</p>`).join("")}
     </div>
     <div class="card">
+      <div class="lbl" style="margin-top:0">Extraction IA (clé Mistral)</div>
+      <p style="font-size:11px;color:var(--muted);margin-bottom:6px">Permet d'extraire les recettes depuis un lien internet ou une photo. Clé gratuite sur console.mistral.ai (API keys).</p>
+      <input class="field" id="mk-input" placeholder="Coller la clé API Mistral…" value="${esc(mistralKey())}">
+      <div style="height:8px"></div>
+      <button class="btn btn-ghost" onclick="saveMistralKey()">💾 Enregistrer la clé</button>
+    </div>
+    <div class="card">
+      <div class="lbl" style="margin-top:0">Sauvegarde des recettes</div>
+      <button class="btn btn-ghost" onclick="exportRecipes()">⬇️ Exporter mes recettes (fichier JSON)</button>
+      <div style="height:8px"></div>
+      <button class="btn btn-ghost" onclick="document.getElementById('imp-file').click()">⬆️ Importer des recettes (fichier JSON)</button>
+      <input type="file" id="imp-file" accept=".json,application/json" class="hidden" onchange="importRecipes(this)">
+      <p style="font-size:10px;color:var(--muted);margin-top:6px">À faire avant chaque mise à jour de l'application : exportez, puis réimportez sur la nouvelle version. L'import complète sans doublon (une recette de même nom remplace l'existante).</p>
+    </div>
+    <div class="card">
       <div class="lbl" style="margin-top:0">Données</div>
       <button class="btn btn-ghost" onclick="exportData()">⬇️ Exporter mes données (JSON)</button>
       <div style="height:8px"></div>
@@ -680,6 +800,44 @@ function exportData(){
   const blob = new Blob([JSON.stringify(S,null,2)], {type:"application/json"});
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob); a.download = "menus-courses-"+todayISO()+".json"; a.click();
+}
+function saveMistralKey(){
+  S.settings = S.settings || {};
+  S.settings.mistralKey = document.getElementById("mk-input").value.trim();
+  save(); toast(mistralKey() ? "Clé enregistrée ✓ — l'extraction IA est active" : "Clé effacée");
+  render();
+}
+function exportRecipes(){
+  const data = { app:"menus-courses", version:1, exportedAt:new Date().toISOString(), recipes:S.recipes };
+  const blob = new Blob([JSON.stringify(data,null,2)], {type:"application/json"});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = "recettes-menus-courses-"+todayISO()+".json"; a.click();
+}
+function importRecipes(input){
+  const f = input.files && input.files[0];
+  if (!f) return;
+  const fr = new FileReader();
+  fr.onload = () => {
+    try {
+      const j = JSON.parse(fr.result);
+      const list = j.recipes || (Array.isArray(j) ? j : null);
+      if (!list) throw new Error("format inconnu");
+      let added = 0, updated = 0;
+      list.forEach(r=>{
+        if (!r.nom) return;
+        const clean = {
+          id: uid(), nom:r.nom, baseServings:r.baseServings||2,
+          ingredients:(r.ingredients||[]).map(i=>({nom:i.nom||"",qte:i.qte||0,unite:i.unite||"pièce"})).filter(i=>i.nom),
+          etapes:r.etapes||[], tags:(r.tags||[]).filter(t=>TAGS[t]), source:r.source||""
+        };
+        const i = S.recipes.findIndex(x=>norm(x.nom)===norm(r.nom));
+        if (i>=0) { S.recipes[i] = clean; updated++; } else { S.recipes.push(clean); added++; }
+      });
+      save(); render(); toast("Import : "+added+" ajoutée(s), "+updated+" mise(s) à jour ✓");
+    } catch(e){ toast("Import impossible : fichier invalide"); }
+    input.value = "";
+  };
+  fr.readAsText(f);
 }
 function wipe(){ lsDel(LS_KEY); S = loadState(); save(); render(); toast("Données effacées"); }
 
