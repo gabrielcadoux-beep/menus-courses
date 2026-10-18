@@ -558,7 +558,7 @@ function setExtractStatus(msg){
 function mistralKey(){ return (S.settings && S.settings.mistralKey) || ""; }
 function sleep(ms){ return new Promise(ok=>setTimeout(ok,ms)); }
 async function mistralCall(body){
-  // Appel API Mistral avec réessai automatique sur limite de débit (429)
+  // Appel API Mistral avec réessai automatique et détails d'erreur lisibles
   for (let attempt = 0; attempt < 3; attempt++) {
     const r = await fetch("https://api.mistral.ai/v1/chat/completions", {
       method:"POST",
@@ -566,31 +566,40 @@ async function mistralCall(body){
       body: JSON.stringify(body)
     });
     if (r.ok) return r.json();
+    let detail = "";
+    try { const j = await r.json(); detail = (j.message || "") + (j.code ? " (code " + j.code + ")" : ""); } catch(e) {}
     if (r.status === 429 && attempt < 2) {
-      setExtractStatus("⏳ Limite de débit atteinte — nouvel essai dans quelques secondes (" + (attempt+1) + "/3)…");
-      await sleep(4000 * (attempt + 1));
+      setExtractStatus("⏳ Limite atteinte — nouvel essai (" + (attempt+1) + "/3)… " + detail);
+      await sleep(5000 * (attempt + 1));
       continue;
     }
     if (r.status === 401) throw new Error("clé API invalide — vérifiez la clé dans Réglages");
     if (r.status === 402) throw new Error("crédits épuisés sur le compte Mistral (console.mistral.ai)");
-    throw new Error("API Mistral : " + r.status);
+    throw new Error("API Mistral " + r.status + " : " + (detail || "erreur inconnue"));
   }
-  throw new Error("limite de débit toujours atteinte après 3 essais — réessayez dans une minute");
+  throw new Error("limite atteinte après 3 essais — " + (detail || "réessayez dans une minute"));
 }
 async function mistralJSON(text, source){
-  // Structure un texte de recette en JSON via l'IA Mistral
-  const j = await mistralCall({
-      model:"mistral-small-latest",
-      messages:[
-        { role:"system", content:"Tu extrais une recette de cuisine. Réponds UNIQUEMENT avec du JSON valide, sans markdown, au format {\"nom\":\"\", \"baseServings\":2, \"ingredients\":[{\"nom\":\"\",\"qte\":0,\"unite\":\"g\"}], \"etapes\":[\"\"], \"tags\":[]}. Unités possibles : g, ml, cl, pièce. Tags possibles : vege, rapide, viande, poisson, hiver, ete, automne, printemps, dessert, favoris. Si une information est absente, laisse le champ vide ou 0." },
-        { role:"user", content:"Source : " + source + "\n\n" + text.slice(0, 6000) }
-      ],
-      temperature:0
-  });
-  let txt = j.choices[0].message.content.trim();
-  if (txt.startsWith("```")) txt = txt.replace(/```[a-z]*\n?/g,"").trim();
-  const start = txt.indexOf("{"), end = txt.lastIndexOf("}");
-  return JSON.parse(txt.slice(start, end+1));
+  // Essai sur plusieurs modèles : si l'un est saturé sur le palier gratuit, on passe au suivant
+  const models = ["mistral-small-latest", "open-mistral-nemo", "ministral-8b-latest"];
+  let lastErr = null;
+  for (const model of models) {
+    try {
+      const j = await mistralCall({
+        model: model,
+        messages:[
+          { role:"system", content:"Tu extrais une recette de cuisine. Réponds UNIQUEMENT avec du JSON valide, sans markdown, au format {\"nom\":\"\", \"baseServings\":2, \"ingredients\":[{\"nom\":\"\",\"qte\":0,\"unite\":\"g\"}], \"etapes\":[\"\"], \"tags\":[]}. Unités possibles : g, ml, cl, pièce. Tags possibles : vege, rapide, viande, poisson, hiver, ete, automne, printemps, dessert, favoris. Si une information est absente, laisse le champ vide ou 0." },
+          { role:"user", content:"Source : " + source + "\n\n" + text.slice(0, 6000) }
+        ],
+        temperature:0
+      });
+      let txt = j.choices[0].message.content.trim();
+      if (txt.startsWith("```")) txt = txt.replace(/```[a-z]*\n?/g,"").trim();
+      const start = txt.indexOf("{"), end = txt.lastIndexOf("}");
+      return JSON.parse(txt.slice(start, end+1));
+    } catch(e) { lastErr = e; if (String(e.message).includes("401") || String(e.message).includes("402")) throw e; }
+  }
+  throw lastErr || new Error("tous les modèles sont limités — réessayez dans une minute");
 }
 function fillDraft(d, source){
   window._draft = {
