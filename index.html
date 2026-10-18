@@ -477,39 +477,51 @@ function recipeForm(r, editId){
       ${Object.entries(TAGS).map(([id,t])=>`<button type="button" class="pill ${((r.tags||[]).includes(id))?'on':''}" style="${t.css}" data-t="${id}" onclick="this.classList.toggle('on')">${t.label}</button>`).join("")}
     </div>
     <div class="lbl">Ingrédients <span style="text-transform:none;font-weight:400">(nom | qté | unité)</span></div>
+    <div class="lbl">Ingrédients <span style="text-transform:none;font-weight:400">(nom | qté | unité · ✕ pour supprimer)</span></div>
     <div id="rf-ings">
       ${((r.ingredients&&r.ingredients.length) ? r.ingredients : [{nom:"",qte:"",unite:"g"}]).map((i)=>`
         <div class="row" style="margin-bottom:6px">
           <input class="field grow" placeholder="Ingrédient" value="${esc(i.nom)}" data-f="nom">
           <input class="field" style="width:76px" type="number" step="any" placeholder="Qté" value="${i.qte||""}" data-f="qte">
           <input class="field" style="width:62px" placeholder="unité" value="${esc(i.unite||"")}" data-f="unite">
+          <button type="button" class="checker" style="background:#fff;color:#a8a29e;border-color:var(--line)" title="Supprimer cet ingrédient" onclick="delRow(this)">✕</button>
         </div>`).join("")}
     </div>
     <button class="optline" style="border-style:dashed;color:#a8a29e;text-align:center;padding:6px" onclick="addIngRow()">+ Ingrédient</button>
-    <div class="lbl">Étapes</div>
+    <div class="lbl">Étapes <span style="text-transform:none;font-weight:400">(✕ pour supprimer)</span></div>
     <div id="rf-steps">
       ${((r.etapes&&r.etapes.length) ? r.etapes : [""]).map(e=>`
         <div class="row" style="margin-bottom:6px">
           <input class="field grow" placeholder="Étape" value="${esc(e)}" data-f="etape">
+          <button type="button" class="checker" style="background:#fff;color:#a8a29e;border-color:var(--line)" title="Supprimer cette étape" onclick="delRow(this)">✕</button>
         </div>`).join("")}
     </div>
     <button class="optline" style="border-style:dashed;color:#a8a29e;text-align:center;padding:6px" onclick="addStepRow()">+ Étape</button>
     <div style="height:14px"></div>
     <button class="btn btn-primary" onclick="saveRecipe('${editId||""}')">${editId?"Enregistrer les modifications":"Enregistrer la recette"}</button>`;
 }
-function addIngRow(){
-  document.getElementById("rf-ings").insertAdjacentHTML("beforeend", `
+function ingRow(i){
+  return `
     <div class="row" style="margin-bottom:6px">
       <input class="field grow" placeholder="Ingrédient" data-f="nom">
       <input class="field" style="width:76px" type="number" step="any" placeholder="Qté" data-f="qte">
       <input class="field" style="width:62px" placeholder="unité" data-f="unite">
-    </div>`);
+      <button type="button" class="checker" style="background:#fff;color:#a8a29e;border-color:var(--line)" title="Supprimer cet ingrédient" onclick="delRow(this)">✕</button>
+    </div>`;
 }
-function addStepRow(){
-  document.getElementById("rf-steps").insertAdjacentHTML("beforeend", `
+function stepRow(){
+  return `
     <div class="row" style="margin-bottom:6px">
       <input class="field grow" placeholder="Étape" data-f="etape">
-    </div>`);
+      <button type="button" class="checker" style="background:#fff;color:#a8a29e;border-color:var(--line)" title="Supprimer cette étape" onclick="delRow(this)">✕</button>
+    </div>`;
+}
+function delRow(btn){ btn.parentElement.remove(); }
+function addIngRow(){
+  document.getElementById("rf-ings").insertAdjacentHTML("beforeend", ingRow());
+}
+function addStepRow(){
+  document.getElementById("rf-steps").insertAdjacentHTML("beforeend", stepRow());
 }
 function collectRecipe(){
   const nom = document.getElementById("rf-nom").value.trim();
