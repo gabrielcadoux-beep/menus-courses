@@ -89,7 +89,7 @@
 
 const SUPABASE_URL = "https://dqztmfrjohbiyohvicemq.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_5Vch5zEymP-ExqRat4VvmA_eVuHHDEE";
-const APP_VERSION = "1.2";
+const APP_VERSION = "1.4";
 const FOYER = "CADOUX";         // code foyer : ta compagne utilisera le même
 
 // ---------- Constantes métier ----------
@@ -335,12 +335,13 @@ function generateList() {
     const base = r.baseServings || 2;
     const f = partsOf(m.convives) / base;
     (r.ingredients||[]).forEach(ing => {
+      if (isExclu(ing.nom)) return; // sel, poivre, huile d'olive, bouillon : jamais achetés
       const k = norm(ing.nom) + "|" + ing.unite;
       (fusion[k] = fusion[k] || { nom:ing.nom, unite:ing.unite, qte:0, cat:guessCat(ing.nom) }).qte += (ing.qte||0) * f;
     });
   });
   const generated = Object.values(fusion).map(v=>({
-    id:uid(), cat:v.cat, nom:v.nom, qte:fmtQte(v.qte, v.unite), checked:false, home:false
+    id:uid(), cat:v.cat, nom:v.nom, qte:fmtQteList(v.qte, v.unite), checked:false, home:false
   }));
   // Report automatique des articles non cochés et non « déjà à la maison »
   const reportes = S.list.filter(i=>!i.checked && !i.home).map(i=>Object.assign({}, i, {id:uid()}));
@@ -349,6 +350,12 @@ function generateList() {
   toast("Liste générée : " + generated.length + " article(s) · " + reportes.length + " reporté(s)");
 }
 function norm(s){ return (s||"").toLowerCase().trim().replace(/\s+/g," "); }
+// Ingrédients jamais transférés vers la liste de courses (fournitures de base)
+const EXCLUS = ["sel","poivre","huile d'olive","cube de bouillon","bouillon cube","cubes de bouillon","bouillon en cube","cube de bouillon"];
+function isExclu(nom){
+  const n = norm(nom);
+  return EXCLUS.some(x => n===x || n.startsWith(x) || (x.startsWith("huile d'olive") && n.startsWith("huile d'olive")));
+}
 function guessCat(nom){
   const n = norm(nom);
   if (/(bebe|bébé|couche|lait infantile|petit pot|baby|biberon|coton tige bebe)/.test(n)) return "bebe";
@@ -372,12 +379,20 @@ function fmtQte(q, u){
   }
   return (Math.round(q*10)/10) + " " + u;
 }
+// Quantités pour la LISTE DE COURSES : pièces toujours arrondies à l'entier supérieur (minimum 1)
+function fmtQteList(q, u){
+  if (!u || u==="pièce" || u==="pièces") {
+    const r = Math.max(1, Math.ceil(q));
+    return r + " pièce" + (r>1?"s":"");
+  }
+  return fmtQte(q, u);
+}
 function mergeIntoList(items){
   items.forEach(it=>{
     const ex = S.list.find(c => norm(c.nom)===norm(it.nom) && !c.checked && !c.home);
     if (ex) {
       const a = parseQ(ex.qte), b = parseQ(it.qte);
-      if (a && b && a.unite===b.unite && b.unite) ex.qte = fmtQte(a.q + b.q, b.unite);
+      if (a && b && a.unite===b.unite && b.unite) ex.qte = fmtQteList(a.q + b.q, b.unite);
       else if (it.qte) ex.qte = ex.qte ? ex.qte + " + " + it.qte : it.qte;
     } else {
       S.list.push({ id:uid(), cat:it.cat||guessCat(it.nom), nom:it.nom, qte:it.qte||"", checked:false, home:false });
@@ -403,12 +418,17 @@ function renderRecettes(el){
     </div>
     <button class="btn btn-primary" style="margin-bottom:12px" onclick="askNewRecipe()">+ Nouvelle recette</button>
     ${list.map(r=>`
-      <div class="card" onclick="openRecipe('${r.id}')" style="cursor:pointer">
-        <div class="row" style="justify-content:space-between">
-          <b style="font-size:14px">${esc(r.nom)}</b>
-          <span style="color:#a8a29e">›</span>
+      <div class="card" onclick="openRecipe('${r.id}')" style="cursor:pointer;padding:0;overflow:hidden">
+        <div class="row" style="align-items:stretch">
+          ${r.photo ? `<img src="${r.photo}" style="width:86px;height:100%;object-fit:cover;flex-shrink:0">` : ""}
+          <div class="grow" style="padding:10px 12px;min-width:0">
+            <div class="row" style="justify-content:space-between">
+              <b style="font-size:14px">${esc(r.nom)}</b>
+              <span style="color:#a8a29e">›</span>
+            </div>
+            <div class="tagrow">${(r.tags||[]).map(t=>`<span class="pill" style="${TAGS[t].css}">${TAGS[t].label}</span>`).join("")}</div>
+          </div>
         </div>
-        <div class="tagrow">${(r.tags||[]).map(t=>`<span class="pill" style="${TAGS[t].css}">${TAGS[t].label}</span>`).join("")}</div>
       </div>`).join("")}
     ${!list.length ? `<p style="text-align:center;color:#a8a29e;font-size:13px;padding:20px">Aucune recette${recFiltres.length?" pour ces filtres":""}.</p>` : ""}
     <p style="font-size:10px;color:#a8a29e;text-align:center">
@@ -428,6 +448,7 @@ function openRecipe(id){
     </div>`).join("");
   openSheet(`
     <h3>${esc(r.nom)} <button class="close" onclick="closeSheet()">✕</button></h3>
+    ${r.photo ? `<img src="${r.photo}" style="width:100%;max-height:190px;object-fit:cover;border-radius:12px;margin-bottom:8px">` : ""}
     <div class="tagrow" style="margin:0 0 6px">${(r.tags||[]).map(t=>`<span class="pill" style="${TAGS[t].css}">${TAGS[t].label}</span>`).join("")}</div>
     ${r.source ? (/^https?:\/\//.test(r.source)
       ? `<p style="font-size:11px;margin-bottom:6px">🔗 Source : <a href="${esc(r.source)}" target="_blank" rel="noopener" style="color:var(--indigo)">${esc(r.source)}</a></p>`
@@ -451,22 +472,44 @@ function openRecipe(id){
         <span style="font-size:13px">${esc(e)}</span>
       </div>`).join("") || "<i style='font-size:12px;color:#a8a29e'>Pas d'étapes</i>"}</div>
     <div class="row">
+      <button class="btn btn-ghost grow" onclick="document.getElementById('rp-photo').click()">📷 Photo</button>
       <button class="btn btn-ghost grow" onclick="editRecipe('${r.id}')">✏️ Modifier</button>
-      <button class="btn btn-primary grow" onclick="recipeToList('${r.id}')">🛒 Ajouter aux courses</button>
-    </div>`);
+      <button class="btn btn-primary grow" onclick="recipeToList('${r.id}')">🛒 Courses</button>
+    </div>
+    <input type="file" id="rp-photo" accept="image/*" class="hidden" onchange="savePhotoToRecipe('${r.id}', this)">`);
+}
+function savePhotoToRecipe(id, input){
+  const f = input.files && input.files[0];
+  if (!f) return;
+  resizePhoto(f, (dataUrl)=>{
+    const r = S.recipes.find(x=>x.id===id);
+    if (r) { r.photo = dataUrl; save(); toast("Photo enregistrée ✓"); openRecipe(id); }
+  });
+  input.value = "";
 }
 function recipeToList(id){
   const r = S.recipes.find(x=>x.id===id);
   const f = window.recPortions / (r.baseServings||2);
-  mergeIntoList((r.ingredients||[]).map(ing=>({
-    cat:guessCat(ing.nom), nom:ing.nom, qte:fmtQte((ing.qte||0)*f, ing.unite)
+  mergeIntoList((r.ingredients||[]).filter(ing=>!isExclu(ing.nom)).map(ing=>({
+    cat:guessCat(ing.nom), nom:ing.nom, qte:fmtQteList((ing.qte||0)*f, ing.unite)
   })));
   save(); closeSheet(); go("courses"); toast("Ingrédients ajoutés à la liste");
 }
 
 function recipeForm(r, editId){
+  window._draftPhoto = window._draftPhoto !== undefined ? window._draftPhoto : (r.photo || null);
   return `
     <input class="field" id="rf-nom" placeholder="Nom de la recette *" value="${esc(r.nom||"")}" style="margin-bottom:8px">
+    <div class="row" style="margin-bottom:8px">
+      <button class="btn btn-ghost grow" style="font-size:12px;padding:8px" onclick="document.getElementById('rf-photo').click()">📷 Appareil photo</button>
+      <button class="btn btn-ghost grow" style="font-size:12px;padding:8px" onclick="document.getElementById('rf-photo-gal').click()">🖼️ Galerie</button>
+      <input type="file" id="rf-photo" accept="image/*" capture="environment" class="hidden" onchange="pickPhoto(this)">
+      <input type="file" id="rf-photo-gal" accept="image/*" class="hidden" onchange="pickPhoto(this)">
+    </div>
+    <div id="rf-photo-prev" style="margin-bottom:${(window._draftPhoto||r.photo)?"8px":"0"}">
+      ${(window._draftPhoto||r.photo) ? `<img src="${window._draftPhoto||r.photo}" style="width:100%;max-height:140px;object-fit:cover;border-radius:10px">
+      <button class="btn btn-ghost" style="font-size:11px;padding:6px;color:#be123c" onclick="window._draftPhoto=null;document.getElementById('rf-photo-prev').innerHTML='';">🗑 Retirer la photo</button>` : ""}
+    </div>
     <input class="field" id="rf-source" placeholder="Source : lien du site web, ou nom du livre + n° de page" value="${esc(r.source||"")}" style="margin-bottom:8px">
     <div class="row" style="margin-bottom:4px">
       <input class="field grow" id="rf-serv" type="number" step="0.5" min="0.5" value="${r.baseServings||2}">
@@ -517,6 +560,51 @@ function stepRow(){
     </div>`;
 }
 function delRow(btn){ btn.parentElement.remove(); }
+
+// ---------- Photo des recettes ----------
+function resizePhoto(file, cb, max, q){
+  max = max || 480; q = q || 0.75;
+  const fr = new FileReader();
+  fr.onload = () => {
+    const img = new Image();
+    img.onload = () => {
+      // Réduction pour un stockage et un envoi légers
+      const k = Math.min(1, max / Math.max(img.width, img.height));
+      const cv = document.createElement("canvas");
+      cv.width = Math.round(img.width * k); cv.height = Math.round(img.height * k);
+      cv.getContext("2d").drawImage(img, 0, 0, cv.width, cv.height);
+      cb(cv.toDataURL("image/jpeg", q));
+    };
+    img.src = fr.result;
+  };
+  fr.readAsDataURL(file);
+}
+function pickPhoto(input){
+  const f = input.files && input.files[0];
+  if (!f) return;
+  resizePhoto(f, (dataUrl) => {
+    window._draftPhoto = dataUrl;
+    const prev = document.getElementById("rf-photo-prev");
+    prev.innerHTML = `<img src="${dataUrl}" style="width:100%;max-height:140px;object-fit:cover;border-radius:10px">`;
+  });
+  input.value = "";
+}
+async function fetchLinkImage(url){
+  // Tente de récupérer l'image principale de la page (photo du plat)
+  try {
+    const r = await fetch("https://r.jina.ai/" + url, { headers:{ "X-Return-Format":"markdown" } });
+    if (!r.ok) return null;
+    const md = await r.text();
+    // images markdown : ![alt](https://...) — on prend la première https
+    const imgs = [...md.matchAll(/!\[[^\]]*\]\((https?:\/\/[^\s)]+\.(?:jpe?g|png|webp)[^\s)]*)\)/gi)].map(m=>m[1]);
+    if (imgs.length) return imgs[0];
+    return null;
+  } catch(e) { return null; }
+}
+function proxyImg(url){
+  // Passe par le proxy de lecture pour afficher une image distante (évite les blocages CORS)
+  return "https://images.weserv.nl/?url=" + encodeURIComponent(url.replace(/^https?:\/\//,"")) + "&w=480";
+}
 function addIngRow(){
   document.getElementById("rf-ings").insertAdjacentHTML("beforeend", ingRow());
 }
@@ -533,7 +621,8 @@ function collectRecipe(){
   const etapes = g("etape").map(s=>s.trim()).filter(Boolean);
   const tags = [...document.querySelectorAll("#rf-tags .pill.on")].map(b=>b.dataset.t);
   const source = document.getElementById("rf-source").value.trim();
-  return { nom, baseServings:parseFloat(document.getElementById("rf-serv").value)||2, ingredients, etapes, tags, source };
+  const photo = window._draftPhoto || null;
+  return { nom, baseServings:parseFloat(document.getElementById("rf-serv").value)||2, ingredients, etapes, tags, source, photo };
 }
 function saveRecipe(editId){
   const r = collectRecipe(); if (!r) return;
@@ -547,7 +636,7 @@ function saveRecipe(editId){
   }
   save(); closeSheet(); render(); toast("Recette enregistrée ✓");
 }
-function askNewRecipe(){ window.recPortions = 2; window._mealKey = null; openSheet(`
+function askNewRecipe(){ window.recPortions = 2; window._mealKey = null; window._draftPhoto = null; openSheet(`
   <h3>Nouvelle recette <button class="close" onclick="closeSheet()">✕</button></h3>
   <div class="lbl" style="margin-top:0">Extraction automatique (IA)</div>
   <div class="row" style="margin-bottom:6px">
@@ -555,8 +644,10 @@ function askNewRecipe(){ window.recPortions = 2; window._mealKey = null; openShe
     <button class="btn btn-primary" style="width:auto;padding:10px 14px;font-size:12px" onclick="extractFromLink()">✨</button>
   </div>
   <div class="row" style="margin-bottom:8px">
-    <button class="btn btn-ghost grow" onclick="document.getElementById('nr-photo').click()">📷 Prendre / choisir une photo</button>
+    <button class="btn btn-ghost grow" style="font-size:12px;padding:9px" onclick="document.getElementById('nr-photo').click()">📷 Appareil photo</button>
+    <button class="btn btn-ghost grow" style="font-size:12px;padding:9px" onclick="document.getElementById('nr-photo-gal').click()">🖼️ Depuis la galerie</button>
     <input type="file" id="nr-photo" accept="image/*" capture="environment" class="hidden" onchange="extractFromPhoto(this)">
+    <input type="file" id="nr-photo-gal" accept="image/*" class="hidden" onchange="extractFromPhoto(this)">
   </div>
   <p id="nr-status" style="font-size:11px;color:var(--muted)"></p>
   <div class="lbl">Ou saisie manuelle</div>
@@ -614,6 +705,7 @@ async function mistralJSON(text, source){
   throw lastErr || new Error("tous les modèles sont limités — réessayez dans une minute");
 }
 function fillDraft(d, source){
+  window._draftPhoto = window._draftPhoto !== undefined ? window._draftPhoto : null;
   window._draft = {
     nom: d.nom || "",
     baseServings: d.baseServings || 2,
@@ -644,45 +736,62 @@ async function extractFromLink(){
     }
     const d = await mistralJSON(text, url);
     fillDraft(d, url);
+    // Récupération de la photo du plat depuis la page
+    setExtractStatus("⏳ Récupération de la photo…");
+    const imgUrl = await fetchLinkImage(url);
+    window._draftPhoto = imgUrl ? proxyImg(imgUrl) : null;
+    fillDraft(d, url);
+    setExtractStatus(imgUrl ? "Photo du plat récupérée ✓ (modifiable)" : "Aucune photo trouvée sur la page — ajoutez-la manuellement");
   } catch(e) { setExtractStatus("❌ " + (e.message||"Extraction impossible. Vérifiez le lien et la clé Mistral.")); }
+}
+// Appel OCR avec réessais et messages d'erreur explicites
+async function ocrCall(page){
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const r = await fetch("https://api.mistral.ai/v1/ocr", {
+      method:"POST",
+      headers:{ "Content-Type":"application/json", "Authorization":"Bearer " + mistralKey() },
+      body: JSON.stringify({ model:"mistral-ocr-latest", pages:[page] })
+    });
+    if (r.ok) return r.json();
+    let detail = "";
+    try { const j = await r.json(); detail = (j.message || (j.detail && JSON.stringify(j.detail).slice(0,120))) || ""; } catch(e) {}
+    if (r.status === 429 && attempt < 2) {
+      setExtractStatus("⏳ Limite atteinte — nouvel essai (" + (attempt+1) + "/3)…");
+      await sleep(5000 * (attempt + 1));
+      continue;
+    }
+    if (r.status === 401) throw new Error("clé API invalide — vérifiez la clé dans Réglages");
+    if (r.status === 402) throw new Error("crédits épuisés sur le compte Mistral (console.mistral.ai)");
+    if (r.status === 422) throw new Error("photo refusée par l'OCR (format ou taille). La photo est maintenant convertie automatiquement — retentez ; sinon essayez une photo plus nette et bien cadrée");
+    if (r.status === 413) throw new Error("photo trop lourde — prenez une photo de plus près, la page en entier");
+    throw new Error("OCR " + r.status + " : " + (detail || "erreur inconnue"));
+  }
+  throw new Error("limite atteinte après 3 essais — réessayez dans une minute");
 }
 async function extractFromPhoto(input){
   const f = input.files && input.files[0];
   if (!f) return;
   if (!mistralKey()) { toast("Renseignez d'abord la clé Mistral dans Réglages ⚙️"); input.value=""; return; }
-  setExtractStatus("⏳ Lecture de la photo…");
+  setExtractStatus("⏳ Préparation de la photo…");
   try {
-    const dataUrl = await new Promise((ok,ko)=>{
-      const fr = new FileReader();
-      fr.onload = ()=>ok(fr.result); fr.onerror = ko;
-      fr.readAsDataURL(f);
-    });
-    const r = await fetch("https://api.mistral.ai/v1/ocr", {
-      method:"POST",
-      headers:{ "Content-Type":"application/json", "Authorization":"Bearer " + mistralKey() },
-      body: JSON.stringify({ model:"mistral-ocr-latest", pages:[{ type:"image_url", image_url: dataUrl }] })
-    });
-    if (!r.ok) throw new Error("OCR : " + r.status);
-    const j = await r.json();
+    // Conversion systématique en JPEG compact (corrige le refus des formats HEIC/très lourds)
+    const dataUrl = await new Promise((ok,ko)=> resizePhoto(f, ok, 1280, 0.85));
+    setExtractStatus("⏳ Lecture OCR de la photo…");
+    const j = await ocrCall({ type:"image_url", image_url: dataUrl });
     const text = (j.pages||[]).map(p=>p.markdown||"").join("\n");
-    if (!text.trim()) throw new Error("photo illisible");
+    if (!text.trim()) throw new Error("photo illisible — prenez la photo de plus près, à la lumière");
+    setExtractStatus("⏳ Structuration de la recette…");
     const d = await mistralJSON(text, "photo");
     fillDraft(d, "");
   } catch(e) { setExtractStatus("❌ " + (e.message||"Extraction impossible. Vérifiez la photo et la clé Mistral.")); }
   input.value = "";
 }
 async function ocrDocument(url){
-  const r = await fetch("https://api.mistral.ai/v1/ocr", {
-    method:"POST",
-    headers:{ "Content-Type":"application/json", "Authorization":"Bearer " + mistralKey() },
-    body: JSON.stringify({ model:"mistral-ocr-latest", pages:[{ type:"document_url", document_url: url }] })
-  });
-  if (!r.ok) throw new Error("OCR : " + r.status);
-  const j = await r.json();
+  const j = await ocrCall({ type:"document_url", document_url: url });
   return (j.pages||[]).map(p=>p.markdown||"").join("\n");
 }
 function askNewRecipeFromMeal(key){
-  window._mealKey = key; window.recPortions = 2;
+  window._mealKey = key; window.recPortions = 2; window._draftPhoto = null;
   openSheet(`
     <h3>Nouvelle recette pour ce repas <button class="close" onclick="closeSheet()">✕</button></h3>
     ${recipeForm({})}`);
