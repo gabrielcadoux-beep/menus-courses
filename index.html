@@ -89,7 +89,7 @@
 
 const SUPABASE_URL = "https://dqztmfrjohbiyohvicemq.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_5Vch5zEymP-ExqRat4VvmA_eVuHHDEE";
-const APP_VERSION = "1.4.2";
+const APP_VERSION = "1.4.3";
 const FOYER = "CADOUX";         // code foyer : ta compagne utilisera le même
 
 // ---------- Constantes métier ----------
@@ -499,6 +499,14 @@ function recipeToList(id){
 function recipeForm(r, editId){
   window._draftPhoto = window._draftPhoto !== undefined ? window._draftPhoto : (r.photo || null);
   return `
+    ${window._refText ? `
+    <div class="card" style="background:#fafaf9;border-color:#e7e5e4">
+      <div class="row" style="justify-content:space-between;margin-bottom:4px">
+        <b style="font-size:11px;color:#57534e">📄 TEXTE LU SUR LA SOURCE — comparez avec le formulaire</b>
+        <button class="checker" style="background:#fff;color:#78716c;border-color:var(--line)" title="Afficher/masquer le texte source" onclick="const d=document.getElementById('rf-ref');d.style.display=d.style.display==='none'?'block':'none'">👁</button>
+      </div>
+      <div id="rf-ref" style="font-size:11px;color:#57534e;white-space:pre-wrap;max-height:110px;overflow-y:auto;line-height:1.45">${esc(window._refText)}</div>
+    </div>` : ""}
     <input class="field" id="rf-nom" placeholder="Nom de la recette *" value="${esc(r.nom||"")}" style="margin-bottom:8px">
     <div class="row" style="margin-bottom:8px">
       <button class="btn btn-ghost grow" style="font-size:12px;padding:8px" onclick="document.getElementById('rf-photo').click()">📷 Appareil photo</button>
@@ -520,7 +528,7 @@ function recipeForm(r, editId){
       ${Object.entries(TAGS).map(([id,t])=>`<button type="button" class="pill ${((r.tags||[]).includes(id))?'on':''}" style="${t.css}" data-t="${id}" onclick="this.classList.toggle('on')">${t.label}</button>`).join("")}
     </div>
     <div class="lbl">Ingrédients <span style="text-transform:none;font-weight:400">(nom | qté | unité)</span></div>
-    <div class="lbl">Ingrédients <span style="text-transform:none;font-weight:400">(nom | qté | unité · ✕ pour supprimer)</span>${window._refText ? `<br><span style="text-transform:none;font-weight:400;color:#b45309"><i>En italique : non trouvé mot pour mot dans la source (possiblement déduit par l'IA) — vérifiez ou supprimez</i></span>` : ""}</div>
+    <div class="lbl">Ingrédients <span style="text-transform:none;font-weight:400">(nom | qté | unité · ✕ pour supprimer)</span>${window._refText ? `<br><span style="text-transform:none;font-weight:400;color:#b45309"><i>En italique orangé : introuvable dans le texte source — probable déduction de l'IA : vérifiez ou supprimez</i></span>` : ""}</div>
     <div id="rf-ings">
       ${((r.ingredients&&r.ingredients.length) ? r.ingredients : [{nom:"",qte:"",unite:"g"}]).map((i)=>`
         <div class="row" style="margin-bottom:6px">
@@ -691,7 +699,7 @@ async function mistralJSON(text, source){
       const j = await mistralCall({
         model: model,
         messages:[
-          { role:"system", content:"Tu extrais une recette de cuisine. Réponds UNIQUEMENT avec du JSON valide, sans markdown, au format {\"nom\":\"\", \"baseServings\":2, \"ingredients\":[{\"nom\":\"\",\"qte\":0,\"unite\":\"g\"}], \"etapes\":[\"\"], \"tags\":[]}. Unités possibles : g, ml, cl, pièce. Tags possibles : vege, rapide, viande, poisson, hiver, ete, automne, printemps, dessert, favoris. REGLE ABSOLUE : utilise UNIQUEMENT les ingrédients et quantités EXPLICITEMENT écrits dans le texte fourni. N'invente AUCUN ingrédient, même typique du plat. Ne modifie AUCUNE quantité. Si un ingrédient du texte est illisible, inclus-le avec qte 0." },
+          { role:"system", content:"Tu extrais une recette de cuisine à partir d'un texte TRANSCRIT d'une photo. Réponds UNIQUEMENT avec du JSON valide, sans markdown, au format {\"nom\":\"\", \"baseServings\":2, \"ingredients\":[{\"nom\":\"\",\"qte\":0,\"unite\":\"g\"}], \"etapes\":[\"\"], \"tags\":[]}. REGLES ABSOLUES : 1) Utilise UNIQUEMENT les ingrédients EXPLICITEMENT écrits dans le texte — n'en invente AUCUN, même typique du plat. 2) Recopie les quantités et unités EXACTEMENT comme écrites (300 g reste 300 g, 2 cm reste 2 cm, « tomates concassées » reste « tomates concassées » et pas « concentré de tomate »). 3) Le titre de la recette est celui écrit dans le texte — ne le reformule pas. 4) Pour les unités non standard (cm, boîte, cuillère à soupe…), garde-les telles quelles dans le champ unite. Tags possibles : vege, rapide, viande, poisson, hiver, ete, automne, printemps, dessert, favoris. Ingrédient illisible → inclus-le avec qte 0." },
           { role:"user", content:"Source : " + source + "\n\n" + text.slice(0, 6000) }
         ],
         temperature:0
@@ -704,14 +712,17 @@ async function mistralJSON(text, source){
   }
   throw lastErr || new Error("tous les modèles sont limités — réessayez dans une minute");
 }
-// Un ingrédient est « suspect » s'il n'apparaît pas mot pour mot dans le texte source
+// Un ingrédient est « suspect » s'il n'est pas recopié fidèlement depuis la source :
+// ni le nom complet, ni le mot principal, ni une variante singulier/pluriel n'apparaissent
+function normForMatch(s){ return norm(s).replace(/(s|x)\b/g,"").replace(/\s+/g," "); }
 function ingSuspect(nom){
   if (!window._refText) return false;
-  const t = norm(window._refText), n = norm(nom);
+  const t = normForMatch(window._refText), n = normForMatch(nom);
   if (!n) return false;
   if (t.includes(n)) return false;
-  const w = n.split(" ")[0];
-  if (w.length >= 4 && t.includes(w)) return false;
+  const words = n.split(" ").filter(Boolean);
+  const main = words.sort((a,b)=>b.length-a.length)[0] || "";
+  if (main.length >= 5 && t.includes(main)) return false;
   return true;
 }
 function fillDraft(d, source, refText){
