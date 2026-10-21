@@ -89,7 +89,7 @@
 
 const SUPABASE_URL = "https://dqztmfrjohbiyohvicemq.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_5Vch5zEymP-ExqRat4VvmA_eVuHHDEE";
-const APP_VERSION = "1.4";
+const APP_VERSION = "1.4.2";
 const FOYER = "CADOUX";         // code foyer : ta compagne utilisera le même
 
 // ---------- Constantes métier ----------
@@ -520,11 +520,11 @@ function recipeForm(r, editId){
       ${Object.entries(TAGS).map(([id,t])=>`<button type="button" class="pill ${((r.tags||[]).includes(id))?'on':''}" style="${t.css}" data-t="${id}" onclick="this.classList.toggle('on')">${t.label}</button>`).join("")}
     </div>
     <div class="lbl">Ingrédients <span style="text-transform:none;font-weight:400">(nom | qté | unité)</span></div>
-    <div class="lbl">Ingrédients <span style="text-transform:none;font-weight:400">(nom | qté | unité · ✕ pour supprimer)</span></div>
+    <div class="lbl">Ingrédients <span style="text-transform:none;font-weight:400">(nom | qté | unité · ✕ pour supprimer)</span>${window._refText ? `<br><span style="text-transform:none;font-weight:400;color:#b45309"><i>En italique : non trouvé mot pour mot dans la source (possiblement déduit par l'IA) — vérifiez ou supprimez</i></span>` : ""}</div>
     <div id="rf-ings">
       ${((r.ingredients&&r.ingredients.length) ? r.ingredients : [{nom:"",qte:"",unite:"g"}]).map((i)=>`
         <div class="row" style="margin-bottom:6px">
-          <input class="field grow" placeholder="Ingrédient" value="${esc(i.nom)}" data-f="nom">
+          <input class="field grow" placeholder="Ingrédient" value="${esc(i.nom)}" data-f="nom" ${ingSuspect(i.nom)?'style="font-style:italic;color:#b45309" title="Non trouvé mot pour mot dans la source — possiblement déduit par l\'IA. Vérifiez ou supprimez."':""}>
           <input class="field" style="width:76px" type="number" step="any" placeholder="Qté" value="${i.qte||""}" data-f="qte">
           <input class="field" style="width:62px" placeholder="unité" value="${esc(i.unite||"")}" data-f="unite">
           <button type="button" class="checker" style="background:#fff;color:#a8a29e;border-color:var(--line)" title="Supprimer cet ingrédient" onclick="delRow(this)">✕</button>
@@ -636,7 +636,7 @@ function saveRecipe(editId){
   }
   save(); closeSheet(); render(); toast("Recette enregistrée ✓");
 }
-function askNewRecipe(){ window.recPortions = 2; window._mealKey = null; window._draftPhoto = null; openSheet(`
+function askNewRecipe(){ window.recPortions = 2; window._mealKey = null; window._draftPhoto = null; window._refText = null; openSheet(`
   <h3>Nouvelle recette <button class="close" onclick="closeSheet()">✕</button></h3>
   <div class="lbl" style="margin-top:0">Extraction automatique (IA)</div>
   <div class="row" style="margin-bottom:6px">
@@ -691,7 +691,7 @@ async function mistralJSON(text, source){
       const j = await mistralCall({
         model: model,
         messages:[
-          { role:"system", content:"Tu extrais une recette de cuisine. Réponds UNIQUEMENT avec du JSON valide, sans markdown, au format {\"nom\":\"\", \"baseServings\":2, \"ingredients\":[{\"nom\":\"\",\"qte\":0,\"unite\":\"g\"}], \"etapes\":[\"\"], \"tags\":[]}. Unités possibles : g, ml, cl, pièce. Tags possibles : vege, rapide, viande, poisson, hiver, ete, automne, printemps, dessert, favoris. Si une information est absente, laisse le champ vide ou 0." },
+          { role:"system", content:"Tu extrais une recette de cuisine. Réponds UNIQUEMENT avec du JSON valide, sans markdown, au format {\"nom\":\"\", \"baseServings\":2, \"ingredients\":[{\"nom\":\"\",\"qte\":0,\"unite\":\"g\"}], \"etapes\":[\"\"], \"tags\":[]}. Unités possibles : g, ml, cl, pièce. Tags possibles : vege, rapide, viande, poisson, hiver, ete, automne, printemps, dessert, favoris. REGLE ABSOLUE : utilise UNIQUEMENT les ingrédients et quantités EXPLICITEMENT écrits dans le texte fourni. N'invente AUCUN ingrédient, même typique du plat. Ne modifie AUCUNE quantité. Si un ingrédient du texte est illisible, inclus-le avec qte 0." },
           { role:"user", content:"Source : " + source + "\n\n" + text.slice(0, 6000) }
         ],
         temperature:0
@@ -704,7 +704,18 @@ async function mistralJSON(text, source){
   }
   throw lastErr || new Error("tous les modèles sont limités — réessayez dans une minute");
 }
-function fillDraft(d, source){
+// Un ingrédient est « suspect » s'il n'apparaît pas mot pour mot dans le texte source
+function ingSuspect(nom){
+  if (!window._refText) return false;
+  const t = norm(window._refText), n = norm(nom);
+  if (!n) return false;
+  if (t.includes(n)) return false;
+  const w = n.split(" ")[0];
+  if (w.length >= 4 && t.includes(w)) return false;
+  return true;
+}
+function fillDraft(d, source, refText){
+  window._refText = refText || null;
   window._draftPhoto = window._draftPhoto !== undefined ? window._draftPhoto : null;
   window._draft = {
     nom: d.nom || "",
@@ -735,12 +746,12 @@ async function extractFromLink(){
       if (text.length > 12000) text = text.slice(0, 12000);
     }
     const d = await mistralJSON(text, url);
-    fillDraft(d, url);
+    fillDraft(d, url, text);
     // Récupération de la photo du plat depuis la page
     setExtractStatus("⏳ Récupération de la photo…");
     const imgUrl = await fetchLinkImage(url);
     window._draftPhoto = imgUrl ? proxyImg(imgUrl) : null;
-    fillDraft(d, url);
+    fillDraft(d, url, text);
     setExtractStatus(imgUrl ? "Photo du plat récupérée ✓ (modifiable)" : "Aucune photo trouvée sur la page — ajoutez-la manuellement");
   } catch(e) { setExtractStatus("❌ " + (e.message||"Extraction impossible. Vérifiez le lien et la clé Mistral.")); }
 }
@@ -788,62 +799,66 @@ function convertPhoto(f, cb){
   };
   fr.readAsDataURL(f);
 }
-async function extractFromPhoto(input){
-  const f = input.files && input.files[0];
-  if (!f) return;
-  if (!mistralKey()) { toast("Renseignez d'abord la clé Mistral dans Réglages ⚙️"); input.value=""; return; }
-  input.value = "";
-  setExtractStatus("⏳ Étape 1/3 — Lecture du fichier photo…");
-  const conv = await new Promise(ok => convertPhoto(f, (dataUrl, err) => ok({ dataUrl, err })));
-  if (!conv.dataUrl) { setExtractStatus("❌ Conversion impossible : " + (conv.err||"format non supporté")); return; }
-  const dataUrl = conv.dataUrl;
-  setExtractStatus("✅ Photo convertie en JPEG — Étape 2/3 : lecture et extraction IA…");
-  // Lecture + structuration en un seul appel au modèle de vision (gère nativement les images embarquées)
+// Étape 1 : transcription MOT À MOT de la photo (interdit d'interpréter)
+async function transcribePhoto(dataUrl){
   for (let attempt = 1; attempt <= 3; attempt++) {
-    setExtractStatus("⏳ Extraction IA — tentative " + attempt + "/3…");
+    setExtractStatus("⏳ Étape 2/4 — Transcription mot à mot — tentative " + attempt + "/3…");
     try {
       const j = await mistralCall({
         model: "pixtral-12b-latest",
         messages: [{
           role: "user",
           content: [
-            { type: "text", text: "Voici la photo d'une recette (livre, magazine, écran ou manuscrit). Transcris-la en JSON valide, sans markdown, au format {\"nom\":\"\", \"baseServings\":2, \"ingredients\":[{\"nom\":\"\",\"qte\":0,\"unite\":\"g\"}], \"etapes\":[\"\"], \"tags\":[]}. Unités : g, ml, cl, pièce. Tags : vege, rapide, viande, poisson, hiver, ete, automne, printemps, dessert, favoris. Champ absent → vide ou 0." },
+            { type: "text", text: "Transcris EXACTEMENT le texte visible de cette recette, mot pour mot, en commençant par la liste COMPLÈTE des ingrédients avec leurs quantités exactes. N'ajoute AUCUN ingrédient, ne corrige rien, ne complète pas. Si un mot est illisible, écris [?]." },
             { type: "image_url", image_url: dataUrl }
           ]
         }],
         temperature: 0
       });
-      let txt = j.choices[0].message.content.trim();
-      if (txt.startsWith("```")) txt = txt.replace(/```[a-z]*\n?/g,"").trim();
-      const start = txt.indexOf("{"), end = txt.lastIndexOf("}");
-      const d = JSON.parse(txt.slice(start, end+1));
-      setExtractStatus("✅ Étape 3/3 — Recette extraite : vérifiez puis enregistrez");
-      fillDraft(d, "");
-      return;
+      const text = j.choices[0].message.content.trim();
+      if (text.length < 10) throw new Error("transcription vide");
+      return text;
     } catch(e) {
       const msg = String(e.message||"");
-      if (msg.includes("401") || msg.includes("402")) { setExtractStatus("❌ " + msg); return; }
-      if (attempt < 3) {
-        setExtractStatus("⏳ Tentative " + attempt + " échouée (" + msg + ") — nouvel essai dans un instant…");
-        await sleep(5000 * attempt);
-      } else {
-        setExtractStatus("❌ Échec après 3 tentatives : " + msg + " — vérifiez la netteté/lumière de la photo et réessayez");
-      }
+      if (msg.includes("401") || msg.includes("402")) throw e;
+      if (attempt === 3) throw new Error("transcription impossible : " + msg);
+      setExtractStatus("⏳ Transcription : tentative " + attempt + " échouée (" + msg + ") — nouvel essai…");
+      await sleep(5000 * attempt);
     }
   }
+}
+async function extractFromPhoto(input){
+  const f = input.files && input.files[0];
+  if (!f) return;
+  if (!mistralKey()) { toast("Renseignez d'abord la clé Mistral dans Réglages ⚙️"); input.value=""; return; }
+  input.value = "";
+  setExtractStatus("⏳ Étape 1/4 — Conversion de la photo en JPEG…");
+  const conv = await new Promise(ok => convertPhoto(f, (dataUrl, err) => ok({ dataUrl, err })));
+  if (!conv.dataUrl) { setExtractStatus("❌ Conversion impossible : " + (conv.err||"format non supporté")); return; }
+  try {
+    // Étape 2 : transcription verbatim (sans interprétation)
+    const text = await transcribePhoto(conv.dataUrl);
+    setExtractStatus("✅ Transcription OK (" + text.split(/\s+/).length + " mots) — Étape 3/4 : structuration…");
+    // Étape 3 : structuration STRICTEMENT à partir de la transcription
+    const d = await mistralJSON(text, "photo");
+    setExtractStatus("✅ Étape 4/4 — Recette structurée. En italique : éléments non lus mot pour mot — vérifiez tout puis enregistrez");
+    fillDraft(d, "", text);
+  } catch(e) { setExtractStatus("❌ " + (e.message||"Extraction impossible. Vérifiez la photo et la clé Mistral.")); }
 }
 async function ocrDocument(url){
   const j = await ocrCall({ type:"document_url", document_url: url });
   return (j.pages||[]).map(p=>p.markdown||"").join("\n");
 }
 function askNewRecipeFromMeal(key){
-  window._mealKey = key; window.recPortions = 2; window._draftPhoto = null;
+  window._mealKey = key; window.recPortions = 2; window._draftPhoto = null; window._refText = null;
   openSheet(`
     <h3>Nouvelle recette pour ce repas <button class="close" onclick="closeSheet()">✕</button></h3>
     ${recipeForm({})}`);
 }
 function editRecipe(id){
   const r = S.recipes.find(x=>x.id===id);
+  window._refText = null;
+  window._draftPhoto = undefined;
   openSheet(`<h3>Modifier la recette <button class="close" onclick="closeSheet()">✕</button></h3>
     ${recipeForm(r, id)}
     <div style="height:8px"></div>
