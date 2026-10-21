@@ -768,23 +768,69 @@ async function ocrCall(page){
   }
   throw new Error("limite atteinte après 3 essais — réessayez dans une minute");
 }
+// Conversion robuste : gère les formats refusés (HEIC…) et informe à chaque étape
+function convertPhoto(f, cb){
+  const fr = new FileReader();
+  fr.onerror = () => cb(null, "fichier illisible");
+  fr.onload = () => {
+    const img = new Image();
+    img.onload = () => {
+      const max = 1280;
+      const k = Math.min(1, max / Math.max(img.width, img.height));
+      const cv = document.createElement("canvas");
+      cv.width = Math.max(1, Math.round(img.width * k));
+      cv.height = Math.max(1, Math.round(img.height * k));
+      cv.getContext("2d").drawImage(img, 0, 0, cv.width, cv.height);
+      cb(cv.toDataURL("image/jpeg", 0.85), null);
+    };
+    img.onerror = () => cb(null, "format de photo non lisible par le navigateur (HEIC ?) — dans l'appareil photo, réglez « Formats compatibles » ou prenez la photo depuis la galerie en JPEG");
+    img.src = fr.result;
+  };
+  fr.readAsDataURL(f);
+}
 async function extractFromPhoto(input){
   const f = input.files && input.files[0];
   if (!f) return;
   if (!mistralKey()) { toast("Renseignez d'abord la clé Mistral dans Réglages ⚙️"); input.value=""; return; }
-  setExtractStatus("⏳ Préparation de la photo…");
-  try {
-    // Conversion systématique en JPEG compact (corrige le refus des formats HEIC/très lourds)
-    const dataUrl = await new Promise((ok,ko)=> resizePhoto(f, ok, 1280, 0.85));
-    setExtractStatus("⏳ Lecture OCR de la photo…");
-    const j = await ocrCall({ type:"image_url", image_url: dataUrl });
-    const text = (j.pages||[]).map(p=>p.markdown||"").join("\n");
-    if (!text.trim()) throw new Error("photo illisible — prenez la photo de plus près, à la lumière");
-    setExtractStatus("⏳ Structuration de la recette…");
-    const d = await mistralJSON(text, "photo");
-    fillDraft(d, "");
-  } catch(e) { setExtractStatus("❌ " + (e.message||"Extraction impossible. Vérifiez la photo et la clé Mistral.")); }
   input.value = "";
+  setExtractStatus("⏳ Étape 1/3 — Lecture du fichier photo…");
+  const conv = await new Promise(ok => convertPhoto(f, (dataUrl, err) => ok({ dataUrl, err })));
+  if (!conv.dataUrl) { setExtractStatus("❌ Conversion impossible : " + (conv.err||"format non supporté")); return; }
+  const dataUrl = conv.dataUrl;
+  setExtractStatus("✅ Photo convertie en JPEG — Étape 2/3 : lecture et extraction IA…");
+  // Lecture + structuration en un seul appel au modèle de vision (gère nativement les images embarquées)
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    setExtractStatus("⏳ Extraction IA — tentative " + attempt + "/3…");
+    try {
+      const j = await mistralCall({
+        model: "pixtral-12b-latest",
+        messages: [{
+          role: "user",
+          content: [
+            { type: "text", text: "Voici la photo d'une recette (livre, magazine, écran ou manuscrit). Transcris-la en JSON valide, sans markdown, au format {\"nom\":\"\", \"baseServings\":2, \"ingredients\":[{\"nom\":\"\",\"qte\":0,\"unite\":\"g\"}], \"etapes\":[\"\"], \"tags\":[]}. Unités : g, ml, cl, pièce. Tags : vege, rapide, viande, poisson, hiver, ete, automne, printemps, dessert, favoris. Champ absent → vide ou 0." },
+            { type: "image_url", image_url: dataUrl }
+          ]
+        }],
+        temperature: 0
+      });
+      let txt = j.choices[0].message.content.trim();
+      if (txt.startsWith("```")) txt = txt.replace(/```[a-z]*\n?/g,"").trim();
+      const start = txt.indexOf("{"), end = txt.lastIndexOf("}");
+      const d = JSON.parse(txt.slice(start, end+1));
+      setExtractStatus("✅ Étape 3/3 — Recette extraite : vérifiez puis enregistrez");
+      fillDraft(d, "");
+      return;
+    } catch(e) {
+      const msg = String(e.message||"");
+      if (msg.includes("401") || msg.includes("402")) { setExtractStatus("❌ " + msg); return; }
+      if (attempt < 3) {
+        setExtractStatus("⏳ Tentative " + attempt + " échouée (" + msg + ") — nouvel essai dans un instant…");
+        await sleep(5000 * attempt);
+      } else {
+        setExtractStatus("❌ Échec après 3 tentatives : " + msg + " — vérifiez la netteté/lumière de la photo et réessayez");
+      }
+    }
+  }
 }
 async function ocrDocument(url){
   const j = await ocrCall({ type:"document_url", document_url: url });
