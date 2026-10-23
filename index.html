@@ -89,13 +89,13 @@
 
 const SUPABASE_URL = "https://dqztmfrjohbiyohvicemq.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_5Vch5zEymP-ExqRat4VvmA_eVuHHDEE";
-const APP_VERSION = "1.4.4";
+const APP_VERSION = "1.6";
 const FOYER = "CADOUX";         // code foyer : ta compagne utilisera le même
 
 // ---------- Constantes métier ----------
 const PERSONNES = [
   { id:"gabriel",   label:"Gabriel",   emoji:"👨", parts:1 },
-  { id:"compagne",  label:"Compagne",  emoji:"👩", parts:1 },
+  { id:"compagne",  label:"AV",   emoji:"👩", parts:1 },
   { id:"raphaelle", label:"Raphaëlle", emoji:"👧", parts:0.5 },
 ];
 const TAGS = {
@@ -245,15 +245,17 @@ function mealCell(d, repas) {
   const key = d + "|" + repas;
   const m = S.meals[key];
   if (!m) return `<button class="cell empty" onclick="editMeal('${d}','${repas}')">+</button>`;
-  if (!m.convives || m.convives.length===0)
+  if (!m.convives || (m.convives.length===0 && !(m.invites>0)))
     return `<button class="cell nobody" onclick="editMeal('${d}','${repas}')">vide</button>`;
-  const parts = partsOf(m.convives);
+  const parts = partsMeal(m);
   if (m.special)
     return `<button class="cell special" onclick="editMeal('${d}','${repas}')">🎉 ${esc(m.special)}<span class="who">${parts} pers.</span></button>`;
   const r = S.recipes.find(x=>x.id===m.recetteId);
-  return `<button class="cell filled" onclick="editMeal('${d}','${repas}')">${r?esc(r.nom):"—"}<span class="who">${parts} portion${parts>1?"s":""} · ${m.convives.length} pers.</span></button>`;
+  return `<button class="cell filled" onclick="editMeal('${d}','${repas}')">${r?esc(r.nom):"—"}<span class="who">${parts} portion${parts>1?"s":""} · ${fmtPers(m)} pers.</span></button>`;
 }
 function partsOf(ids){ return PERSONNES.filter(p=>ids.includes(p.id)).reduce((s,p)=>s+p.parts,0); }
+function partsMeal(m){ return partsOf(m.convives||[]) + (m.invites||0); }
+function fmtPers(m){ const t = (m.convives||[]).length + (m.invites||0); return (t%1 ? t.toFixed(1) : t); }
 
 function editMeal(d, repas) {
   const key = d + "|" + repas;
@@ -267,8 +269,17 @@ function editMeal(d, repas) {
           <span class="e">${p.emoji}</span>${p.label}<span class="p">${p.parts} portion</span>
         </button>`).join("")}
     </div>
+    <div class="lbl" style="margin-top:10px">Invités (en plus de la famille)</div>
+    <div class="row" style="justify-content:center;align-items:center">
+      <button class="btn btn-ghost" style="width:46px;font-size:18px" onclick="setInvites('${key}',-0.5)">−</button>
+      <div style="text-align:center;min-width:140px">
+        <b style="font-size:16px">${(m.invites||0)%1?(m.invites||0).toFixed(1).replace(".",","):(m.invites||0)} invité${(m.invites||0)>1?"s":""}</b>
+        <div style="font-size:10px;color:#a8a29e">0,5 = un enfant 🧒</div>
+      </div>
+      <button class="btn btn-ghost" style="width:46px;font-size:18px" onclick="setInvites('${key}',0.5)">+</button>
+    </div>
     <button class="optline" style="margin-top:8px;text-align:center;color:#a8a29e" onclick="setMealEmpty('${key}')">Option « vide » — personne ne mange à la maison 🚫</button>
-    ${m.convives.length ? `
+    ${(m.convives.length || (m.invites||0)>0) ? `
       <div class="lbl">Plat principal</div>
       ${S.recipes.map(r=>`
         <button class="optline" onclick="setMealRecipe('${key}','${r.id}')"
@@ -285,6 +296,11 @@ function editMeal(d, repas) {
 function toggleConvive(key, pid) {
   const m = S.meals[key] || { recetteId:null, convives:[], special:null };
   m.convives = m.convives.includes(pid) ? m.convives.filter(x=>x!==pid) : [...m.convives, pid];
+  S.meals[key] = m; save(); editMeal(...key.split("|"));
+}
+function setInvites(key, delta) {
+  const m = S.meals[key] || { recetteId:null, convives:[], special:null };
+  m.invites = Math.max(0, Math.min(20, Math.round(((m.invites||0)+delta)*2)/2));
   S.meals[key] = m; save(); editMeal(...key.split("|"));
 }
 function setMealEmpty(key){ S.meals[key] = { recetteId:null, convives:[], special:null }; save(); closeSheet(); render(); }
@@ -329,11 +345,11 @@ function extraToList(id){
 function generateList() {
   const fusion = {};
   Object.entries(S.meals).forEach(([key, m]) => {
-    if (!m.recetteId || !m.convives || !m.convives.length) return;
+    if (!m.recetteId || ((!m.convives || !m.convives.length) && !(m.invites>0))) return;
     const r = S.recipes.find(x=>x.id===m.recetteId);
     if (!r) return;
     const base = r.baseServings || 2;
-    const f = partsOf(m.convives) / base;
+    const f = partsMeal(m) / base;
     (r.ingredients||[]).forEach(ing => {
       if (isExclu(ing.nom)) return; // sel, poivre, huile d'olive, bouillon : jamais achetés
       const k = norm(ing.nom) + "|" + ing.unite;
@@ -418,15 +434,18 @@ function renderRecettes(el){
     </div>
     <button class="btn btn-primary" style="margin-bottom:12px" onclick="askNewRecipe()">+ Nouvelle recette</button>
     ${list.map(r=>`
-      <div class="card" onclick="openRecipe('${r.id}')" style="cursor:pointer;padding:0;overflow:hidden">
-        <div class="row" style="align-items:stretch">
-          ${r.photo ? `<img src="${r.photo}" style="width:86px;height:100%;object-fit:cover;flex-shrink:0">` : ""}
-          <div class="grow" style="padding:10px 12px;min-width:0">
+      <div class="card" onclick="openRecipe('${r.id}')" style="cursor:pointer;padding:0;overflow:hidden;height:116px">
+        <div class="row" style="align-items:stretch;height:100%">
+          ${r.photo
+            ? `<img src="${r.photo}" style="width:118px;height:116px;object-fit:cover;flex-shrink:0">`
+            : `<div style="width:118px;height:116px;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:#f5f5f4;font-size:34px">🍽️</div>`}
+          <div class="grow" style="padding:11px 12px;min-width:0">
             <div class="row" style="justify-content:space-between">
-              <b style="font-size:14px">${esc(r.nom)}</b>
-              <span style="color:#a8a29e">›</span>
+              <b style="font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(r.nom)}</b>
+              <span style="color:#a8a29e;flex-shrink:0">›</span>
             </div>
-            <div class="tagrow">${(r.tags||[]).map(t=>`<span class="pill" style="${TAGS[t].css}">${TAGS[t].label}</span>`).join("")}</div>
+            <div class="tagrow" style="flex-wrap:nowrap;overflow:hidden;white-space:nowrap;margin-top:4px">${(r.tags||[]).map(t=>`<span class="pill" style="${TAGS[t].css}">${TAGS[t].label}</span>`).join("")}</div>
+            <div style="font-size:11px;color:#a8a29e;margin-top:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${r.source ? (/^https?:\/\//.test(r.source) ? "🔗 " + esc(r.source) : "📖 " + esc(r.source)) : "&nbsp;"}</div>
           </div>
         </div>
       </div>`).join("")}
@@ -1094,10 +1113,23 @@ async function initSync(){
     sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
     await pull();
     render();
-    sb.channel("foyer-"+FOYER).on("postgres_changes",
-      { event:"*", schema:"public", table:"app_state", filter:"foyer=eq."+FOYER },
-      (payload) => { if (payload.new && payload.new.foyer===FOYER) applyRemote(payload.new.data); }
-    ).subscribe();
+    // Temps réel : propagation instantanée quand il fonctionne
+    sb.channel("foyer--"+FOYER)
+      .on("postgres_changes",
+        { event:"*", schema:"public", table:"app_state", filter:"foyer=eq."+FOYER },
+        (payload) => { if (payload.new && payload.new.foyer===FOYER) applyRemote(payload.new.data); }
+      )
+      .subscribe((status) => {
+        window._rtStatus = status; // "SUBSCRIBED" = OK
+        updateSyncStatus();
+      });
+    // Filet de sécurité n°1 : relevé toutes les 30 s (fonctionne même si le temps réel est coupé)
+    setInterval(() => { pull().catch(()=>{}); }, 30000);
+    // Filet de sécurité n°2 : relevé à chaque retour sur l'app (essentiel sur mobile)
+    window.addEventListener("focus", () => { pull().catch(()=>{}); });
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") pull().catch(()=>{});
+    });
   } catch(e) { console.warn("Sync indisponible (hors ligne ou mode local)", e); }
   updateSyncStatus();
 }
@@ -1110,12 +1142,18 @@ function loadScript(src){
 }
 async function pull(){
   if (!sb) return;
-  const { data } = await sb.from("app_state").select("data, updated_at").eq("foyer", FOYER).maybeSingle();
-  if (data) applyRemote(data.data);
+  const { data, error } = await sb.from("app_state").select("data, updated_at").eq("foyer", FOYER).maybeSingle();
+  if (error) { window._syncError = "Lecture : " + error.message; updateSyncStatus(); return; }
+  if (data) {
+    applyRemote(data.data);
+    window._syncError = null;
+    window._lastPull = Date.now();
+    updateSyncStatus();
+  }
 }
 function applyRemote(remote){
   if (!remote) return;
-  // « dernière écriture gagne » — suffisant pour un foyer de 2 personnes
+  // « dernière écriture gagne » — suffisant pour un foyer de 2-3 personnes
   if ((remote._rev||0) > (S._rev||0)) {
     S = Object.assign(structuredClone(DEFAULT_STATE), remote);
     render();
@@ -1125,17 +1163,29 @@ function schedulePush(){ clearTimeout(pushTimer); pushTimer = setTimeout(pushNow
 async function pushNow(manual){
   if (!sb) { if (manual) toast("Mode local — partage temps réel dès que les clés Supabase seront configurées"); updateSyncStatus(); return; }
   S._rev = Date.now();
-  try {
-    await sb.from("app_state").upsert({ foyer:FOYER, data:S, updated_at:new Date().toISOString() });
+  const { error } = await sb.from("app_state").upsert({ foyer:FOYER, data:S, updated_at:new Date().toISOString() });
+  if (error) {
+    window._syncError = "Envoi : " + error.message;
+    if (manual) toast("❌ Synchro impossible : " + error.message);
+  } else {
+    window._syncError = null;
+    window._lastPush = Date.now();
     if (manual) toast("Synchronisé avec le foyer ✓");
-  } catch(e) { if (manual) toast("Synchro impossible : hors ligne ?"); }
+  }
   updateSyncStatus();
 }
 function updateSyncStatus(){
   const el = document.getElementById("sync-status"); if(!el) return;
-  el.innerHTML = sb
-    ? `✅ Connectée — planning, recettes et listes partagés en temps réel avec ta compagne.`
-    : `📱 Mode local (données sur cet appareil, hors ligne OK).<br><span style="font-size:11px;color:var(--muted)">Pour le partage temps réel : crée le projet Supabase, colle l'URL et la clé anon dans les 2 lignes SUPABASE_* du fichier, et déployez sur GitHub Pages. Guide détaillé fourni.</span>`;
+  const heure = (t) => new Date(t).toLocaleTimeString("fr-FR", {hour:"2-digit", minute:"2-digit"});
+  if (!sb) {
+    el.innerHTML = `📱 Mode local (données sur cet appareil, hors ligne OK).<br><span style="font-size:11px;color:var(--muted)">Pour le partage temps réel : crée le projet Supabase, colle l'URL et la clé anon dans les 2 lignes SUPABASE_* du fichier, et déployez sur GitHub Pages.</span>`;
+    return;
+  }
+  let base = `✅ Connectée — planning, recettes et listes partagés en temps réel avec AV.`;
+  if (window._syncError) base = `⚠️ Problème de synchro : ${esc(window._syncError)}`;
+  const last = window._lastPush || window._lastPull;
+  base += `<br><span style="font-size:11px;color:var(--muted)">Dernière synchro : ${last ? heure(last) : "—"} · Temps réel : ${window._rtStatus==="SUBSCRIBED" ? "actif" : "en attente"}${window._rtStatus==="CHANNEL_ERROR"||window._rtStatus==="TIMED_OUT" ? " (relevé automatique toutes les 30 s actif)" : ""}</span>`;
+  el.innerHTML = base;
 }
 window.addEventListener("online", ()=>{ document.getElementById("syncbar").style.display="none"; pushNow(); });
 window.addEventListener("offline", ()=>{ document.getElementById("syncbar").style.display="block"; });
