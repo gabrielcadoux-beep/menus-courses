@@ -89,7 +89,7 @@
 
 const SUPABASE_URL = "https://dqztmfrhobiyohvicemq.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_5Vch5zEymP-ExqRat4VvmA_eVuHHDEE";
-const APP_VERSION = "1.6.3";
+const APP_VERSION = "1.6.4";
 const FOYER = "CADOUX";         // code foyer : ta compagne utilisera le même
 
 // ---------- Constantes métier ----------
@@ -719,7 +719,7 @@ async function mistralJSON(text, source){
         model: model,
         messages:[
           { role:"system", content:"Tu extrais une recette de cuisine à partir d'un texte TRANSCRIT d'une photo. Réponds UNIQUEMENT avec du JSON valide, sans markdown, au format {\"nom\":\"\", \"baseServings\":2, \"ingredients\":[{\"nom\":\"\",\"qte\":0,\"unite\":\"g\"}], \"etapes\":[\"\"], \"tags\":[]}. REGLES ABSOLUES : 1) Utilise UNIQUEMENT les ingrédients EXPLICITEMENT écrits dans le texte — n'en invente AUCUN, même typique du plat. 2) Recopie les quantités et unités EXACTEMENT comme écrites (300 g reste 300 g, 2 cm reste 2 cm, « tomates concassées » reste « tomates concassées » et pas « concentré de tomate »). 3) Le titre de la recette est celui écrit dans le texte — ne le reformule pas. 4) Pour les unités non standard (cm, boîte, cuillère à soupe…), garde-les telles quelles dans le champ unite. Tags possibles : vege, rapide, viande, poisson, hiver, ete, automne, printemps, dessert, favoris. Ingrédient illisible → inclus-le avec qte 0." },
-          { role:"user", content:"Source : " + source + "\n\n" + (text.length > 7500 ? text.slice(0, 7500) : text) }
+          { role:"user", content:"Source : " + source + "\n\n" + (text.length > 15000 ? text.slice(0, 15000) : text) }
         ],
         temperature:0
       });
@@ -760,15 +760,35 @@ function fillDraft(d, source, refText){
     <p style="font-size:11px;color:var(--muted);margin-bottom:6px">✨ L'IA a lu la source : relisez, corrigez, puis enregistrez.</p>
     ${recipeForm(window._draft)}`);
 }
+// Nettoyage du markdown renvoyé par le lecteur de pages : suppression des images,
+// des liens (on garde le texte), et des lignes de navigation / fil d'Ariane / pieds de
+// page qui noient la recette sur les blogs de cuisine.
+function cleanRecipeMd(raw){
+  let t = raw.replace(/\[!\[[^\]]*\]\([^)]*\)\]\([^)]*\)/g, "")  // image dans un lien
+             .replace(/!\[[^\]]*\]\([^)]*\)/g, "")               // images seules
+             .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1");           // liens → texte visible
+  const NOISE = /^(rechercher|accueil|aller au contenu|skip to|les recettes|recettes? (sal|sucr|par|au)|menus? de la semaine|qui suis|contact|instagram|facebook|pinterest|tiktok|abonne|newsletter|partager|laisser un commentaire|poster un commentaire|commentaires?|retour en haut|voir aussi|sur le pouce|toute une salade|que faire avec|du (lait|fromage|mascarpone)|des (blancs|jaunes)|viva|voyage|escale|cap sur|sous le soleil|autres continents|merry|joyeux|un goût|bbq|sans (gluten|lactose)|allerg|bredeles|les moules|l'automne|l'hiver|du soleil|comme un air|recettes? par)/i;
+  const lines = t.split("\n").filter(l => {
+    const s = l.trim();
+    if (!s) return true;                          // garder les sauts de ligne
+    if (/^[*•\-–]\s*$/.test(s)) return false;     // puces vides
+    if (/^\d+\.\s*$/.test(s)) return false;
+    if (NOISE.test(s)) return false;
+    if (/^\d+\.\s*(accueil|les recettes|recettes|retour)/i.test(s)) return false; // fil d'Ariane
+    return true;
+  });
+  return lines.join("\n").replace(/\n{3,}/g, "\n\n");
+}
 // Cible la section utile d'une page web : cherche « Ingrédients » et centre la fenêtre dessus
 // (les gros sites de cuisine noient la recette sous les menus/pub/recettes similaires)
 function relevantText(raw){
-  const lower = raw.toLowerCase();
+  const cleaned = cleanRecipeMd(raw);
+  const lower = cleaned.toLowerCase();
   const anchors = [lower.search(/ingr[ée]dients?/), lower.search(/ingr[ée]dients pour/), lower.search(/pr[ée]paration/)].filter(i=>i>=0);
   const idx = anchors.length ? Math.min(...anchors) : -1;
-  if (idx > 300) return raw.slice(Math.max(0, idx - 400), idx + 7000);
+  if (idx > 300) return cleaned.slice(Math.max(0, idx - 400), idx + 15000);
   // Pas de section repérée : fenêtre élargie depuis le début
-  return raw.slice(0, 8000);
+  return cleaned.slice(0, 16000);
 }
 async function fetchRecipeText(url){
   // Lecture de la page avec nettoyage des éléments parasites (cookies, menus, popups)
@@ -1048,24 +1068,3 @@ function renderReglages(el){
     </div>
     <div class="card">
       <div class="lbl" style="margin-top:0">Synchronisation</div>
-      <p style="font-size:13px" id="sync-status">…</p>
-      <div style="height:8px"></div>
-      <button class="btn btn-ghost" onclick="pushNow(true)">🔄 Synchroniser maintenant</button>
-    </div>
-    <div class="card">
-      <div class="lbl" style="margin-top:0">Personnes du foyer</div>
-      ${PERSONNES.map(p=>`<p style="font-size:13px">${p.emoji} <b>${p.label}</b> — ${p.parts} portion(s) par repas</p>`).join("")}
-    </div>
-    <div class="card">
-      <div class="lbl" style="margin-top:0">Extraction IA (clé Mistral)</div>
-      <p style="font-size:11px;color:var(--muted);margin-bottom:6px">Permet d'extraire les recettes depuis un lien internet ou une photo. Clé gratuite sur console.mistral.ai (API keys).</p>
-      <input class="field" id="mk-input" placeholder="Coller la clé API Mistral…" value="${esc(mistralKey())}">
-      <div style="height:8px"></div>
-      <button class="btn btn-ghost" onclick="saveMistralKey()">💾 Enregistrer la clé</button>
-    </div>
-    <div class="card">
-      <div class="lbl" style="margin-top:0">Sauvegarde des recettes</div>
-      <button class="btn btn-ghost" onclick="exportRecipes()">⬇️ Exporter mes recettes (fichier JSON)</button>
-      <div style="height:8px"></div>
-      <button class="btn btn-ghost" onclick="document.getElementById('imp-file').click()">⬆️ Importer des recettes (fichier JSON)</button>
-      <input type="file" id="imp-file" accept=".json,application/json" class="hidden" onchange="importRecipes(this)">
