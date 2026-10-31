@@ -89,7 +89,7 @@
 
 const SUPABASE_URL = "https://dqztmfrhobiyohvicemq.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_5Vch5zEymP-ExqRat4VvmA_eVuHHDEE";
-const APP_VERSION = "1.6.2";
+const APP_VERSION = "1.6.3";
 const FOYER = "CADOUX";         // code foyer : ta compagne utilisera le même
 
 // ---------- Constantes métier ----------
@@ -764,10 +764,25 @@ function fillDraft(d, source, refText){
 // (les gros sites de cuisine noient la recette sous les menus/pub/recettes similaires)
 function relevantText(raw){
   const lower = raw.toLowerCase();
-  const idx = lower.search(/ingr[ée]dients?/);
+  const anchors = [lower.search(/ingr[ée]dients?/), lower.search(/ingr[ée]dients pour/), lower.search(/pr[ée]paration/)].filter(i=>i>=0);
+  const idx = anchors.length ? Math.min(...anchors) : -1;
   if (idx > 300) return raw.slice(Math.max(0, idx - 400), idx + 7000);
-  // Pas de titre « Ingrédients » trouvé : fenêtre élargie depuis le début
+  // Pas de section repérée : fenêtre élargie depuis le début
   return raw.slice(0, 8000);
+}
+async function fetchRecipeText(url){
+  // Lecture de la page avec nettoyage des éléments parasites (cookies, menus, popups)
+  const noiseHeaders = {
+    "X-Retain-Images": "none",
+    "X-Remove-Selector": "header,footer,nav,aside,[class*=didomi],[id*=didomi],[class*=cookie],[class*=consent],[aria-modal],[role=dialog],[class*=popup]"
+  };
+  try {
+    const r = await fetch("https://r.jina.ai/" + url, { headers: noiseHeaders });
+    if (r.ok) return await r.text();
+  } catch(e) { /* navigateur refusant ces en-têtes : repli sans en-têtes */ }
+  const r2 = await fetch("https://r.jina.ai/" + url);
+  if (!r2.ok) throw new Error("lecture du lien impossible");
+  return r2.text();
 }
 async function extractFromLink(){
   const url = (document.getElementById("nr-link").value||"").trim();
@@ -779,11 +794,9 @@ async function extractFromLink(){
     if (/\.(jpe?g|png|webp|pdf)(\?|$)/i.test(url)) {
       text = await ocrDocument(url);
     } else {
-      const r = await fetch("https://r.jina.ai/" + url);
-      if (!r.ok) throw new Error("lecture du lien impossible");
-      const raw = await r.text();
+      const raw = await fetchRecipeText(url);
       setExtractStatus("⏳ Repérage de la section recette (ingrédients, étapes)…");
-      text = relevantText(raw.length > 40000 ? raw.slice(0, 40000) : raw);
+      text = relevantText(raw.length > 150000 ? raw.slice(0, 150000) : raw);
     }
     const d = await mistralJSON(text, url);
     fillDraft(d, url, text);
@@ -1056,170 +1069,3 @@ function renderReglages(el){
       <div style="height:8px"></div>
       <button class="btn btn-ghost" onclick="document.getElementById('imp-file').click()">⬆️ Importer des recettes (fichier JSON)</button>
       <input type="file" id="imp-file" accept=".json,application/json" class="hidden" onchange="importRecipes(this)">
-      <p style="font-size:10px;color:var(--muted);margin-top:6px">À faire avant chaque mise à jour de l'application : exportez, puis réimportez sur la nouvelle version. L'import complète sans doublon (une recette de même nom remplace l'existante).</p>
-    </div>
-    <div class="card">
-      <div class="lbl" style="margin-top:0">Données</div>
-      <button class="btn btn-ghost" onclick="exportData()">⬇️ Exporter mes données (JSON)</button>
-      <div style="height:8px"></div>
-      <button class="btn btn-ghost" style="color:#be123c" onclick="if(confirm('Tout effacer (planning, recettes, listes) ?'))wipe()">🗑 Tout effacer</button>
-    </div>
-    <p style="font-size:10px;color:#a8a29e;text-align:center;padding:6px 0 14px">Menus &amp; Courses v${APP_VERSION} — Gabriel &amp; famille</p>`;
-  updateSyncStatus();
-}
-function exportData(){
-  const blob = new Blob([JSON.stringify(S,null,2)], {type:"application/json"});
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob); a.download = "menus-courses-"+todayISO()+".json"; a.click();
-}
-function saveMistralKey(){
-  S.settings = S.settings || {};
-  S.settings.mistralKey = document.getElementById("mk-input").value.trim();
-  save(); toast(mistralKey() ? "Clé enregistrée ✓ — l'extraction IA est active" : "Clé effacée");
-  render();
-}
-function exportRecipes(){
-  const data = { app:"menus-courses", version:1, exportedAt:new Date().toISOString(), recipes:S.recipes };
-  const blob = new Blob([JSON.stringify(data,null,2)], {type:"application/json"});
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob); a.download = "recettes-menus-courses-"+todayISO()+".json"; a.click();
-}
-function importRecipes(input){
-  const f = input.files && input.files[0];
-  if (!f) return;
-  const fr = new FileReader();
-  fr.onload = () => {
-    try {
-      const j = JSON.parse(fr.result);
-      const list = j.recipes || (Array.isArray(j) ? j : null);
-      if (!list) throw new Error("format inconnu");
-      let added = 0, updated = 0;
-      list.forEach(r=>{
-        if (!r.nom) return;
-        const clean = {
-          id: uid(), nom:r.nom, baseServings:r.baseServings||2,
-          ingredients:(r.ingredients||[]).map(i=>({nom:i.nom||"",qte:i.qte||0,unite:i.unite||"pièce"})).filter(i=>i.nom),
-          etapes:r.etapes||[], tags:(r.tags||[]).filter(t=>TAGS[t]), source:r.source||""
-        };
-        const i = S.recipes.findIndex(x=>norm(x.nom)===norm(r.nom));
-        if (i>=0) { S.recipes[i] = clean; updated++; } else { S.recipes.push(clean); added++; }
-      });
-      save(); render(); toast("Import : "+added+" ajoutée(s), "+updated+" mise(s) à jour ✓");
-    } catch(e){ toast("Import impossible : fichier invalide"); }
-    input.value = "";
-  };
-  fr.readAsText(f);
-}
-function wipe(){ lsDel(LS_KEY); S = loadState(); save(); render(); toast("Données effacées"); }
-
-// ============================================================
-// SYNCHRONISATION (Supabase) — locale d'abord, cloud ensuite
-// ============================================================
-let sb = null, pushTimer = null;
-async function initSync(){
-  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) { updateSyncStatus(); return; }
-  try {
-    await loadScript("https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js");
-    sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-    await pull();
-    render();
-    // Temps réel : propagation instantanée quand il fonctionne
-    sb.channel("foyer--"+FOYER)
-      .on("postgres_changes",
-        { event:"*", schema:"public", table:"app_state", filter:"foyer=eq."+FOYER },
-        (payload) => { if (payload.new && payload.new.foyer===FOYER) applyRemote(payload.new.data); }
-      )
-      .subscribe((status) => {
-        window._rtStatus = status; // "SUBSCRIBED" = OK
-        updateSyncStatus();
-      });
-    // Filet de sécurité n°1 : relevé toutes les 30 s (fonctionne même si le temps réel est coupé)
-    setInterval(() => { pull().catch(()=>{}); }, 30000);
-    // Filet de sécurité n°2 : relevé à chaque retour sur l'app (essentiel sur mobile)
-    window.addEventListener("focus", () => { pull().catch(()=>{}); });
-    document.addEventListener("visibilitychange", () => {
-      if (document.visibilityState === "visible") pull().catch(()=>{});
-    });
-  } catch(e) { console.warn("Sync indisponible (hors ligne ou mode local)", e); }
-  updateSyncStatus();
-}
-function loadScript(src){
-  return new Promise((ok,ko)=>{
-    if (window.supabase) return ok();
-    const s = document.createElement("script"); s.src = src; s.onload = ok; s.onerror = ko;
-    document.head.appendChild(s);
-  });
-}
-async function pull(){
-  if (!sb) return;
-  const { data, error } = await sb.from("app_state").select("data, updated_at").eq("foyer", FOYER).maybeSingle();
-  if (error) { window._syncError = "Lecture : " + error.message; updateSyncStatus(); return; }
-  if (data) {
-    applyRemote(data.data);
-    window._syncError = null;
-    window._lastPull = Date.now();
-    updateSyncStatus();
-  }
-}
-function applyRemote(remote){
-  if (!remote) return;
-  // « dernière écriture gagne » — suffisant pour un foyer de 2-3 personnes
-  if ((remote._rev||0) > (S._rev||0)) {
-    S = Object.assign(structuredClone(DEFAULT_STATE), remote);
-    render();
-  }
-}
-function schedulePush(){ clearTimeout(pushTimer); pushTimer = setTimeout(pushNow, 1200); }
-async function pushNow(manual){
-  if (!sb) { if (manual) toast("Mode local — partage temps réel dès que les clés Supabase seront configurées"); updateSyncStatus(); return; }
-  S._rev = Date.now();
-  const { error } = await sb.from("app_state").upsert({ foyer:FOYER, data:S, updated_at:new Date().toISOString() });
-  if (error) {
-    window._syncError = "Envoi : " + error.message;
-    if (manual) toast("❌ Synchro impossible : " + error.message);
-  } else {
-    window._syncError = null;
-    window._lastPush = Date.now();
-    if (manual) toast("Synchronisé avec le foyer ✓");
-  }
-  updateSyncStatus();
-}
-function updateSyncStatus(){
-  const el = document.getElementById("sync-status"); if(!el) return;
-  const heure = (t) => new Date(t).toLocaleTimeString("fr-FR", {hour:"2-digit", minute:"2-digit"});
-  if (!sb) {
-    el.innerHTML = `📱 Mode local (données sur cet appareil, hors ligne OK).<br><span style="font-size:11px;color:var(--muted)">Pour le partage temps réel : crée le projet Supabase, colle l'URL et la clé anon dans les 2 lignes SUPABASE_* du fichier, et déployez sur GitHub Pages.</span>`;
-    return;
-  }
-  let base = `✅ Connectée — planning, recettes et listes partagés en temps réel avec AV.`;
-  if (window._syncError) base = `⚠️ Problème de synchro : ${esc(window._syncError)}`;
-  const last = window._lastPush || window._lastPull;
-  base += `<br><span style="font-size:11px;color:var(--muted)">Dernière synchro : ${last ? heure(last) : "—"} · Temps réel : ${window._rtStatus==="SUBSCRIBED" ? "actif" : "en attente"}${window._rtStatus==="CHANNEL_ERROR"||window._rtStatus==="TIMED_OUT" ? " (relevé automatique toutes les 30 s actif)" : ""}</span>`;
-  el.innerHTML = base;
-}
-window.addEventListener("online", ()=>{ document.getElementById("syncbar").style.display="none"; pushNow(); });
-window.addEventListener("offline", ()=>{ document.getElementById("syncbar").style.display="block"; });
-
-// ---------- Démarrage : 2 recettes d'exemple ----------
-if (!S.recipes.length) {
-  S.recipes = [
-    { id:uid(), nom:"Pâtes carbonara maison", baseServings:2, tags:["rapide"],
-      ingredients:[{nom:"Spaghetti",qte:200,unite:"g"},{nom:"Lardons",qte:150,unite:"g"},{nom:"Crème fraîche",qte:20,unite:"cl"},{nom:"Parmesan",qte:50,unite:"g"}],
-      etapes:["Cuire les pâtes al dente","Faire revenir les lardons","Mélanger hors du feu avec la crème et le parmesan"] },
-    { id:uid(), nom:"Riz aux légumes du soleil", baseServings:2, tags:["vege","ete"],
-      ingredients:[{nom:"Riz",qte:180,unite:"g"},{nom:"Courgette",qte:1,unite:"pièce"},{nom:"Tomates cerises",qte:250,unite:"g"},{nom:"Feta",qte:100,unite:"g"}],
-      etapes:["Rincer le riz","Cuire 12 min à couvert","Poêler les légumes","Mélanger, ajouter la feta"] },
-  ];
-  save();
-}
-initSync();
-try { render(); }
-catch(e) {
-  document.getElementById("app").innerHTML =
-    "<div class='card' style='color:#be123c;font-size:12px'><b>Erreur d'affichage :</b> " +
-    String(e.message || e) + "</div>";
-  console.error(e);
-}
-</script>
-</body>
-</html>
