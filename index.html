@@ -89,7 +89,7 @@
 
 const SUPABASE_URL = "https://dqztmfrhobiyohvicemq.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_5Vch5zEymP-ExqRat4VvmA_eVuHHDEE";
-const APP_VERSION = "1.7.0";
+const APP_VERSION = "1.7.1";
 const FOYER = "CADOUX";         // code foyer : ta compagne utilisera le même
 
 // ---------- Constantes métier ----------
@@ -346,9 +346,10 @@ function extraToList(id){
 function generateList() {
   const fusion = {};
   Object.entries(S.meals).forEach(([key, m]) => {
-    // 🗓️ Seulement les repas d'aujourd'hui et à venir (jamais les recettes passées)
+    // 🗓️ Seulement les repas à partir de la date sélectionnée du planning (« Semaine à partir du »)
+    const debut = S.weekStart || todayISO();
     const jour = (key.split("|")[0] || "");
-    if (/^\d{4}-\d{2}-\d{2}$/.test(jour) && jour < todayISO()) return;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(jour) && jour < debut) return;
     if (!m.recetteId || ((!m.convives || !m.convives.length) && !(m.invites>0))) return;
     const r = S.recipes.find(x=>x.id===m.recetteId);
     if (!r) return;
@@ -592,8 +593,8 @@ function ingRow(i){
     <div class="row" style="margin-bottom:6px">
       <input class="field grow" placeholder="Ingrédient" data-f="nom">
       <input class="field" style="width:76px" type="number" step="any" placeholder="Qté" data-f="qte">
-      <input class="field" style="width:62px" placeholder="unité" data-f="unite">
 
+      <input class="field" style="width:62px" placeholder="unité" data-f="unite">
       <button type="button" class="checker" style="background:#fff;color:#a8a29e;border-color:var(--line)" title="Supprimer cet ingrédient" onclick="delRow(this)">✕</button>
     </div>`;
 }
@@ -893,8 +894,8 @@ function convertPhoto(f, cb){
 // Étape 2 : transcription. Priorité au MOTEUR OCR DÉDIÉ (reconnaissance de caractères,
 // n'invente rien) ; repli sur le modèle de vision seulement si l'OCR échoue.
 async function transcribePhoto(dataUrl){
-  // --- Tentative 1 : moteur OCR dédié (fidélité maximale) ---
 
+  // --- Tentative 1 : moteur OCR dédié (fidélité maximale) ---
   for (let attempt = 1; attempt <= 3; attempt++) {
     setExtractStatus("⏳ Étape 2/4 — OCR dédié (lecture fidèle) — tentative " + attempt + "/3…");
     try {
@@ -1194,8 +1195,8 @@ async function initSync(){
     sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
     await pull();
     render();
-    // Temps réel : propagation instantanée quand il fonctionne
 
+    // Temps réel : propagation instantanée quand il fonctionne
     sb.channel("foyer--"+FOYER)
       .on("postgres_changes",
         { event:"*", schema:"public", table:"app_state", filter:"foyer=eq."+FOYER },
