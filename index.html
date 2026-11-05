@@ -89,7 +89,7 @@
 
 const SUPABASE_URL = "https://dqztmfrhobiyohvicemq.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_5Vch5zEymP-ExqRat4VvmA_eVuHHDEE";
-const APP_VERSION = "1.7.2";
+const APP_VERSION = "1.7.3";
 const FOYER = "CADOUX";         // code foyer : ta compagne utilisera le même
 
 // ---------- Constantes métier ----------
@@ -809,10 +809,12 @@ function relevantText(raw){
   // Pas de section repérée : fenêtre élargie depuis le début
   return cleaned.slice(0, 16000);
 }
-// Le texte lu doit contenir un vrai contenu de recette (ni cache vide, ni page bloquée)
+// Le texte lu doit contenir un vrai contenu de recette (ni cache vide, ni page bloquée,
+// ni bandeau cookies seul). Seuil relevé : un bandeau de consentement peut dépasser 600
+// caractères à lui tout seul — 2 500 évite de le confondre avec une vraie page de recette.
 function usableRecipeText(t){
   const body = (t || "").split("Markdown Content:")[1] || t || "";
-  return body.replace(/\s+/g, " ").trim().length > 600;
+  return body.replace(/\s+/g, " ").trim().length > 2500;
 }
 async function fetchRecipeText(url){
   // Lecture de la page via le lecteur de pages, avec chaîne de repli :
@@ -892,9 +894,9 @@ function convertPhoto(f, cb){
   const fr = new FileReader();
   fr.onerror = () => cb(null, "fichier illisible");
   fr.onload = () => {
+
     const img = new Image();
     img.onload = () => {
-
       const max = 1280;
       const k = Math.min(1, max / Math.max(img.width, img.height));
       const cv = document.createElement("canvas");
@@ -1193,9 +1195,9 @@ function importRecipes(input){
         if (i>=0) { S.recipes[i] = clean; updated++; } else { S.recipes.push(clean); added++; }
       });
       save(); render(); toast("Import : "+added+" ajoutée(s), "+updated+" mise(s) à jour ✓");
+
     } catch(e){ toast("Import impossible : fichier invalide"); }
     input.value = "";
-
   };
   fr.readAsText(f);
 }
