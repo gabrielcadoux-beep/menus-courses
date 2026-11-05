@@ -89,7 +89,7 @@
 
 const SUPABASE_URL = "https://dqztmfrhobiyohvicemq.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_5Vch5zEymP-ExqRat4VvmA_eVuHHDEE";
-const APP_VERSION = "1.6.4";
+const APP_VERSION = "1.7.0";
 const FOYER = "CADOUX";         // code foyer : ta compagne utilisera le même
 
 // ---------- Constantes métier ----------
@@ -346,6 +346,9 @@ function extraToList(id){
 function generateList() {
   const fusion = {};
   Object.entries(S.meals).forEach(([key, m]) => {
+    // 🗓️ Seulement les repas d'aujourd'hui et à venir (jamais les recettes passées)
+    const jour = (key.split("|")[0] || "");
+    if (/^\d{4}-\d{2}-\d{2}$/.test(jour) && jour < todayISO()) return;
     if (!m.recetteId || ((!m.convives || !m.convives.length) && !(m.invites>0))) return;
     const r = S.recipes.find(x=>x.id===m.recetteId);
     if (!r) return;
@@ -362,15 +365,26 @@ function generateList() {
   }));
   // Report automatique des articles non cochés et non « déjà à la maison »
   const reportes = S.list.filter(i=>!i.checked && !i.home).map(i=>Object.assign({}, i, {id:uid()}));
-  S.list = [...reportes, ...generated];
+  // 👶 Essentiels bébé (option des Réglages) : ajoutés seulement s'ils manquent
+  const bebes = [];
+  if (S.settings.penseBebe) {
+    ["Couches", "Lait bébé", "Petits pots bébé"].forEach(n=>{
+      const deja = [...reportes, ...generated, ...bebes].some(i=>norm(i.nom)===norm(n));
+      if (!deja) bebes.push({ id:uid(), cat:"bebe", nom:n, qte:"", checked:false, home:false });
+    });
+  }
+  S.list = [...reportes, ...generated, ...bebes];
   save(); go("courses");
-  toast("Liste générée : " + generated.length + " article(s) · " + reportes.length + " reporté(s)");
+  toast("Liste générée : " + generated.length + " article(s)" + (bebes.length ? " + " + bebes.length + " essentiels bébé 👶" : "") + " · " + reportes.length + " reporté(s)");
 }
 function norm(s){ return (s||"").toLowerCase().trim().replace(/\s+/g," "); }
 // Ingrédients jamais transférés vers la liste de courses (fournitures de base)
-const EXCLUS = ["sel","poivre","huile d'olive","cube de bouillon","bouillon cube","cubes de bouillon","bouillon en cube","cube de bouillon"];
+const EXCLUS = ["sel","poivre","huile d'olive","cube de bouillon","bouillon cube","cubes de bouillon","bouillon en cube","farine","fecule","fécule","maizena","maïzena","levure chimique","levure de boulanger","bicarbonate"];
+// Toutes les épices (sèches / moulues) sont considérées comme fournitures de base
+const EPICES = /(epices?\b|épices?\b|zaatar|za'atar|paprika|curcuma|cumin|muscade|cannelle|girofle|cardamome|safran|ras el hanout|quatre.epices|quatre épices|colombo|massale|massalé|carvi|badiane|anis vert|piment doux|piment d.espelette|piment moulu|piment de cayenne|gingembre moulu|herbes de provence|herbes de provence|melange pour|mélange pour)/;
 function isExclu(nom){
   const n = norm(nom);
+  if (EPICES.test(n)) return true;
   return EXCLUS.some(x => n===x || n.startsWith(x) || (x.startsWith("huile d'olive") && n.startsWith("huile d'olive")));
 }
 function guessCat(nom){
@@ -461,11 +475,13 @@ function openRecipe(id){
   const r = S.recipes.find(x=>x.id===id);
   window.recPortions = window.recPortions || 2;
   const f = window.recPortions / (r.baseServings || 2);
-  const ings = (r.ingredients||[]).map(i=>`
+  const ings = (r.ingredients||[]).map(i=>{
+    const stock = isExclu(i.nom); // farine, épices, sel… : jamais transférés vers les courses
+    return `
     <div class="item">
-      <span class="grow nm">${esc(i.nom)}</span>
+      <span class="grow nm" ${stock?'style="color:#16a34a"':''}>${esc(i.nom)}${stock ? ' <span style="font-size:9px;color:#16a34a;font-weight:700;letter-spacing:.3px">🏠 FOND DE PLACARD</span>' : ""}</span>
       <span style="font-size:12px;color:var(--muted)">${fmtQte((i.qte||0)*f, i.unite)}</span>
-    </div>`).join("");
+    </div>`;}).join("");
   openSheet(`
     <h3>${esc(r.nom)} <button class="close" onclick="closeSheet()">✕</button></h3>
     ${r.photo ? `<img src="${r.photo}" style="width:100%;max-height:190px;object-fit:cover;border-radius:12px;margin-bottom:8px">` : ""}
@@ -577,6 +593,7 @@ function ingRow(i){
       <input class="field grow" placeholder="Ingrédient" data-f="nom">
       <input class="field" style="width:76px" type="number" step="any" placeholder="Qté" data-f="qte">
       <input class="field" style="width:62px" placeholder="unité" data-f="unite">
+
       <button type="button" class="checker" style="background:#fff;color:#a8a29e;border-color:var(--line)" title="Supprimer cet ingrédient" onclick="delRow(this)">✕</button>
     </div>`;
 }
@@ -593,7 +610,6 @@ function delRow(btn){ btn.parentElement.remove(); }
 function resizePhoto(file, cb, max, q){
   max = max || 480; q = q || 0.75;
   const fr = new FileReader();
-
   fr.onload = () => {
     const img = new Image();
     img.onload = () => {
@@ -878,6 +894,7 @@ function convertPhoto(f, cb){
 // n'invente rien) ; repli sur le modèle de vision seulement si l'OCR échoue.
 async function transcribePhoto(dataUrl){
   // --- Tentative 1 : moteur OCR dédié (fidélité maximale) ---
+
   for (let attempt = 1; attempt <= 3; attempt++) {
     setExtractStatus("⏳ Étape 2/4 — OCR dédié (lecture fidèle) — tentative " + attempt + "/3…");
     try {
@@ -894,7 +911,6 @@ async function transcribePhoto(dataUrl){
         setExtractStatus("⏳ OCR indisponible (" + msg + ") — repli sur transcription par vision IA…");
         return await transcribeByVision(dataUrl);
       }
-
       setExtractStatus("⏳ OCR : tentative " + attempt + " échouée (" + msg + ") — nouvel essai…");
       await sleep(5000 * attempt);
     }
@@ -1011,7 +1027,8 @@ function renderCourses(el){
         </div>`).join("")}
     </div>` : ""}
     <div style="height:10px"></div>
-    <button class="btn btn-ghost" onclick="clearChecked()">🧹 Vider les articles cochés (fin de courses)</button>
+    <button class="btn btn-ghost" onclick="clearChecked()">🧹 Vider après les courses (retire les cochés et les « déjà à la maison »)</button>
+    <button class="btn btn-ghost" style="margin-top:6px" onclick="clearList()">🗑️ Vider toute la liste (repartir de zéro)</button>
     <p style="font-size:10px;color:#a8a29e;text-align:center;margin-top:8px">
       Les non-cochés sont automatiquement reportés quand vous régénérez la liste depuis le Planning.
     </p>`;
@@ -1054,9 +1071,22 @@ function addManual(){
   mergeIntoList([{ nom:v, qte:"" }]);
   save(); render();
 }
+function togglePenseBebe(){
+  S.settings.penseBebe = !S.settings.penseBebe;
+  save(); render();
+  toast(S.settings.penseBebe ? "Essentiels bébé 👶 ajoutés aux prochaines listes" : "Essentiels bébé désactivés");
+}
 function clearChecked(){
-  S.list = S.list.filter(i=>!i.checked);
-  save(); render(); toast("Liste nettoyée");
+  // Fin de courses : on retire les articles cochés ET ceux déjà à la maison ; on garde le reste
+  const avant = S.list.length;
+  S.list = S.list.filter(i=>!i.checked && !i.home);
+  save(); render(); toast("Liste nettoyée : " + (avant - S.list.length) + " article(s) retiré(s)");
+}
+function clearList(){
+  if (!S.list.length) { toast("Liste déjà vide"); return; }
+  if (!confirm("Vider TOUTE la liste de courses (" + S.list.length + " article(s)) ?")) return;
+  S.list = [];
+  save(); render(); toast("Liste entièrement vidée");
 }
 
 // ============================================================
@@ -1074,6 +1104,11 @@ function renderReglages(el){
       <p style="font-size:13px" id="sync-status">…</p>
       <div style="height:8px"></div>
       <button class="btn btn-ghost" onclick="pushNow(true)">🔄 Synchroniser maintenant</button>
+    </div>
+    <div class="card">
+      <div class="lbl" style="margin-top:0">Courses</div>
+      <button class="btn btn-ghost" onclick="togglePenseBebe()">${S.settings.penseBebe ? "✅" : "⬜"} 👶 Penser aux essentiels bébé (couches, lait, petits pots)</button>
+      <p style="font-size:10px;color:var(--muted);margin-top:6px">Si activé, « Couches », « Lait bébé » et « Petits pots bébé » sont ajoutés à chaque génération de liste — seulement s'ils n'y figurent pas déjà.</p>
     </div>
     <div class="card">
       <div class="lbl" style="margin-top:0">Personnes du foyer</div>
@@ -1160,6 +1195,7 @@ async function initSync(){
     await pull();
     render();
     // Temps réel : propagation instantanée quand il fonctionne
+
     sb.channel("foyer--"+FOYER)
       .on("postgres_changes",
         { event:"*", schema:"public", table:"app_state", filter:"foyer=eq."+FOYER },
@@ -1195,7 +1231,6 @@ async function pull(){
     window._syncError = null;
     window._lastPull = Date.now();
     updateSyncStatus();
-
   }
 }
 function applyRemote(remote){
