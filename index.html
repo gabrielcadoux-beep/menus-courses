@@ -89,7 +89,7 @@
 
 const SUPABASE_URL = "https://dqztmfrhobiyohvicemq.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_5Vch5zEymP-ExqRat4VvmA_eVuHHDEE";
-const APP_VERSION = "1.8.1";
+const APP_VERSION = "1.9.0";
 const FOYER = "CADOUX";         // code foyer : ta compagne utilisera le même
 
 // ---------- Constantes métier ----------
@@ -111,14 +111,17 @@ const TAGS = {
   favoris:    { label:"⭐ Favoris",    css:"background:#fef9c3;color:#a16207" },
 };
 const CATS = [
-  { id:"legumes", label:"Légumes & Fruits",   emoji:"🥕" },
-  { id:"viande",  label:"Viande & Poisson",   emoji:"🥩" },
-  { id:"laitage", label:"Laitage & Crèmerie", emoji:"🧀" },
-  { id:"secs",    label:"Produits secs",      emoji:"🥜" },
-  { id:"menage",  label:"Ménage",            emoji:"🧹" },
-  { id:"hygiene", label:"Hygiène",           emoji:"🧼" },
-  { id:"bebe",    label:"Bébé",               emoji:"🍼" },
-  { id:"autres",  label:"Autres",             emoji:"📦" },
+  { id:"autres",  label:"Autres",                   emoji:"📦" },
+  { id:"bebe",    label:"Bébé",                     emoji:"🍼" },
+  { id:"hygiene", label:"Hygiène",                  emoji:"🧼" },
+  { id:"menage",  label:"Ménage",                   emoji:"🧹" },
+  { id:"secs",    label:"Aliments secs & conserves", emoji:"🥫" },
+  { id:"laitage", label:"Crèmerie & Laitage",       emoji:"🧀" },
+  { id:"frais",   label:"Frais (traiteur & charcuterie)", emoji:"🥓" },
+  { id:"viande",  label:"Viande & Poisson",         emoji:"🥩" },
+  { id:"legumes", label:"Fruits & Légumes",         emoji:"🥕" },
+  { id:"apero",   label:"Apéritif & boissons",      emoji:"🍹" },
+  { id:"surgeles",label:"Surgelés",                 emoji:"🧊" },
 ];
 
 // ---------- État & persistance ----------
@@ -289,10 +292,10 @@ function editMeal(d, repas) {
         <b style="font-size:16px">${(m.invites||0)%1?(m.invites||0).toFixed(1).replace(".",","):(m.invites||0)} invité${(m.invites||0)>1?"s":""}</b>
         <div style="font-size:10px;color:#a8a29e">0,5 = un enfant 🧒</div>
       </div>
+
       <button class="btn btn-ghost" style="width:46px;font-size:18px" onclick="setInvites('${key}',0.5)">+</button>
     </div>
     <button class="optline" style="margin-top:8px;text-align:center;color:#a8a29e" onclick="setMealEmpty('${key}')">Option « vide » — personne ne mange à la maison 🚫</button>
-
     ${(m.convives.length || (m.invites||0)>0) ? `
       <div class="lbl">Plat principal</div>
       <button class="optline" style="color:#0d9488;text-align:center;border-color:#99f6e4" onclick="askImpro('${key}')">🥘 Repas improvisé (ingrédients libres)…</button>
@@ -462,13 +465,20 @@ function isExclu(nom){
 }
 function guessCat(nom){
   const n = norm(nom);
-  if (/(bebe|bébé|couche|apolline|lait infantile|petit pot|baby|biberon|coton tige bebe)/.test(n)) return "bebe";
-  if (/(riz|pate|pâtes|noix|noisette|amande|farine|sucre|quinoa|boulgour|semoule|lentille|pois chiche|couscous|cereale|céréale|huile|vinaigre|epice|épice|sel|miel|confiture|chocolat|cacao|levure|feuille brick|tortilla|gnocchi)/.test(n)) return "secs";
-  if (/(tomate|concombre|butternut|oignon|citron|pomme|courge|carotte|poireau|salade|epinard|épinard|ail|poivron|courgette|aubergine|banane|orange|poire|fraise|radis|champignon|endive|brocoli|fenouil|navet|betterave|laitue|herbe|persil|basilic|avocat|mangue|melon|raisin|pruneau|abricot|peche|pêche|nectarine)/.test(n)) return "legumes";
-  if (/(jambon|poulet|boeuf|bœuf|porc|saumon|cabillaud|crevette|lard|steak|dinde|veau|agneau|merlu|truite|chorizo|viande|haché|hache|saucisse|cotelette|côtelette)/.test(n)) return "viande";
-  if (/(crème|creme|feta|emmental|beurre|yaourt|lait|fromage|mozzarella|parmesan|chevre|chèvre|œuf|oeuf|ricotta|gruyere|gruyère|reblochon|faisselle|comté|bleu|tome|creme dessert|chantilly)/.test(n)) return "laitage";
-  if (/(savon|shampooing|dentifrice|douche|brosse|coton|mouchoir|deodorant|déodorant|hygiene|hygiène|bain|intime|maquillage|rasoir|papier toilette)/.test(n)) return "hygiene";
-  if (/(eponge|éponge|papier|lessive|vaisselle|poubelle|sac|seau|nettoyant|grille|aluminium|film|essuie)/.test(n)) return "menage";
+  if (/(bebe|bébé|couche|apolline|lait infantile|petit pot|baby|biberon|coton tige bebe|grenouillere|body bebe|linge bebe)/.test(n)) return "bebe";
+  if (/(surgel|congel|glace|nugget|batonnet|frites |escargot surgele|croustillant surgele)/.test(n)) return "surgeles";
+  if (/(savon|shampooing|shampoing|dentifrice|gel douche|brosse a dents|coton|serviette hygienique|tampon|protection|rasoir|lait corporel|deodorant|déodorant|maquillage|mouchoir|pansement|baume|epilateur|coton tige|bain|intime|vernis|lames de rasoir)/.test(n)) return "hygiene";
+  if (/(papier toilette|sopalin|essuie tout|essuie-tout|eponge|éponge|vaisselle|lessive|adoucissant|poubelle|nettoyant|javel|aluminium|film alimentaire|couvercle|micro onde|paille|torchon|serpillere|seau |allumette|bougie|ampoule|pile\b|sac poubelle|sac de congellation)/.test(n)) return "menage";
+  if (/(crème|creme|feta|emmental|beurre|yaourt|yogourt|lait\b|fromage|mozzarella|parmesan|chevre|chèvre|œuf|oeuf|ricotta|gruyere|gruyère|reblochon|faisselle|comté|comte|bleu\b|tome|chantilly|mascarpone|cancoillotte|philadelphia|kiri|vache qui rit|speculoos fromage|creme dessert)/.test(n)) return "laitage";
+  // Frais : traiteur & charcuterie (pâtes fraîches, pâtes à tarte, jambon, lardons,
+  // poitrine, saucisse de Morteau ou fumée, saumon fumé, tofu…)
+  if (/(fraiche|fraîche|frais\b|brisée|brisée|feuilletée|jambon|lardon|poitrine|morteau|cabanos|knacki|tofu|seitan|pate a pizza|pâte à pizza|pate a tarte|pâte à tarte|saumon fumé|saumon fume|fumée?\b|saucisse de strasbourg|crevette grise|rillette|terrine|pate feuillete fraiche|cervelas)/.test(n)) return "frais";
+  if (/(poulet|boeuf|bœuf|veau|porc\b|dinde|agneau|mouton|lapin|caille|canard|pigeon|viande|steak|escalope|haché|hache|cotelette|côtelette|gigot|merguez|saucisse|andouille|chorizo|coted de|saumon|truite|cabillaud|colin|dorade|bar\b|lieu|thon\b|sardine|anchois|poisson|crevette|gambas|moule\b|st jacques|saint-jacques|homard|langoustine|lotte|maquereau)/.test(n)) return "viande";
+  if (/(tomate|concombre|butternut|oignon|citron|pomme|courge|carotte|poireau|salade|laitue|roquette|epinard|épinard|ail|poivron|courgette|aubergine|banane|orange|poire|fraise|radis|champignon|endive|brocoli|fenouil|navet|betterave|herbe|persil|basilic|menthe|coriandre|ciboulette|aneth|cerfeuil|estragon|avocat|mangue|melon|raisin|pruneau|abricot|peche|pêche|nectarine|prune|kiwi|ananas|potiron|petit pois|petits pois|haricot vert|pois gourmand|chou|bete rouge|cerise|myrtille|framboise|cassis|legume|légume|fruit\b|pomme de terre|patate|poireau|echalote|échalote|gingembre frais)/.test(n)) return "legumes";
+  // Secs & conserves : huile, vinaigre, bocaux, compotes et sucreries inclus
+  if (/(huile|vinaigre|bocal|conserve|compote|biscuit|cookie|chocolat|bonbon|sucre|farine|fecule|fécule|maizena|maïzena|levure|riz|semoule|couscous|quinoa|boulgour|pates|pâtes|spaghetti|macaroni|nouille|lasagne|lentille|pois chiche|haricot blanc|haricots blancs|cereale|céréale|muesli|miel|confiture|chapelure|noix|noisette|amande|cacahuete|cacahuète|pistache|cajou|cafe|café|the\b|thé\b|sel\b|poivre|epice|épice|sirop|cacao|tortilla|gnocchi|feuille brick|pain de mie|brioche|biscotte|soupe en sachet|fond de volaille|bouillon|cake sale|sirop d'erable|vermicelle|tortilla wraps?)/.test(n)) return "secs";
+  // Apéritif & boissons : chips, dips (houmous, tzatziki…), toutes les boissons
+  if (/(chips|crackers?|biscuit apero|biscuit apéro|houmous|tzatziki|tarama|tapenade|dips?\b|guacamole|olive|saucisson|grisini|bretzel|tortilla chips|aperitif|apéritif|amuse|eau\b|perrier|evian|soda|coca|cola|jus|limonade|biere|bière|vin\b|cidre|champagne|grenadine|the froid|cafe froid|boisson|diabolo|cristalline|volvic|contrex|jus de fruits)/.test(n)) return "apero";
   return "autres";
 }
 // ---------- 💰 Estimation du prix par portion ----------
@@ -506,7 +516,7 @@ const PRIX = [
   [/(vin blanc|vin rouge|brouilly)/, 6, "L"],
   [/(bouillon|fond de volaille)/, 2, "L"],
 ];
-const PRIX_CAT = { viande:12, laitage:8, legumes:3, secs:4, hygiene:6, menage:5, bebe:8, autres:6 };
+const PRIX_CAT = { viande:12, frais:9, laitage:8, legumes:3, secs:4, apero:4, surgeles:7, hygiene:6, menage:5, bebe:8, autres:6 };
 function prixIngredient(ing, pu, unit){
   const u = (ing.unite||"pièce").toLowerCase();
   const q = ing.qte || 0;
@@ -583,6 +593,7 @@ let recFiltres = [];
 function renderRecettes(el){
   const usage = recipeUseCounts();
   const list = S.recipes
+
     .filter(r => !recFiltres.length || (r.tags||[]).some(t=>recFiltres.includes(t)))
     .slice().sort((a,b)=>(usage[b.id]||0)-(usage[a.id]||0)); // ⭐ favoris en haut (portions réalisées)
   el.innerHTML = `
@@ -593,7 +604,6 @@ function renderRecettes(el){
     </div>
     <div class="row" style="margin-bottom:12px">
       <button class="btn btn-primary grow" onclick="askNewRecipe()">+ Nouvelle recette</button>
-
       <button class="btn btn-ghost grow" onclick="askBulkImport()">🚀 Import en masse</button>
     </div>
     ${list.map(r=>`
@@ -856,20 +866,38 @@ function setExtractStatus(msg){
 }
 function mistralKey(){ return (S.settings && S.settings.mistralKey) || ""; }
 function sleep(ms){ return new Promise(ok=>setTimeout(ok,ms)); }
+// Espacement préventif des appels API Mistral (~1,5 s) : évite d'entrer dans le
+// cycle 429 « limite de débit » qui coûtait 5-10 s d'attente à chaque extraction.
+function apiPause(){
+  const gap = 1500;
+  const now = Date.now();
+  const wait = window._lastApiTs ? Math.max(0, window._lastApiTs + gap - now) : 0;
+  window._lastApiTs = now + wait;
+  return wait ? sleep(wait) : Promise.resolve();
+}
 async function mistralCall(body){
   // Appel API Mistral avec réessai automatique et détails d'erreur lisibles
+  let detail = "";
   for (let attempt = 0; attempt < 3; attempt++) {
-    const r = await fetch("https://api.mistral.ai/v1/chat/completions", {
+    await apiPause();
+    const ctrl = new AbortController();
+    const to = setTimeout(()=>ctrl.abort(), 60000); // un appel bloqué échoue vite plutôt que de figer
+    let r;
+    try { r = await fetch("https://api.mistral.ai/v1/chat/completions", {
       method:"POST",
       headers:{ "Content-Type":"application/json", "Authorization":"Bearer " + mistralKey() },
-      body: JSON.stringify(body)
-    });
+      body: JSON.stringify(body),
+      signal: ctrl.signal
+    }); }
+    finally { clearTimeout(to); }
     if (r.ok) return r.json();
-    let detail = "";
     try { const j = await r.json(); detail = (j.message || "") + (j.code ? " (code " + j.code + ")" : ""); } catch(e) {}
     if (r.status === 429 && attempt < 2) {
+      let ra = 0; try { ra = parseInt(r.headers.get("retry-after") || "", 10) || 0; } catch(e) {}
+
+      const wait = ra > 0 ? ra * 1000 : (2000 + attempt * 1000); // attente courte : la limite se lève vite
       setExtractStatus("⏳ Limite atteinte — nouvel essai (" + (attempt+1) + "/3)… " + detail);
-      await sleep(5000 * (attempt + 1));
+      await sleep(wait);
       continue;
     }
     if (r.status === 401) throw new Error("clé API invalide — vérifiez la clé dans Réglages");
@@ -894,7 +922,6 @@ async function mistralJSON(text, source){
       });
       let txt = j.choices[0].message.content.trim();
       if (txt.startsWith("```")) txt = txt.replace(/```[a-z]*\n?/g,"").trim();
-
       const start = txt.indexOf("{"), end = txt.lastIndexOf("}");
       return JSON.parse(txt.slice(start, end+1));
     } catch(e) { lastErr = e; if (String(e.message).includes("401") || String(e.message).includes("402")) throw e; }
@@ -972,9 +999,8 @@ async function fetchRecipeText(url){
   // 1) nettoyage antibruit → 2) version fraîche (anti-cache) → 3) ciblage de la zone recette
   //    → 4) lecture brute. On ne garde que la première réponse qui contient assez de texte.
   const attempts = [
-    { "X-Retain-Images": "none",
+    { "X-Retain-Images": "none", "X-No-Cache": "true",
       "X-Remove-Selector": "header,footer,nav,aside,[class*=didomi],[id*=didomi],[class*=cookie],[class*=consent],[aria-modal],[role=dialog],[class*=popup]" },
-    { "X-Retain-Images": "none", "X-No-Cache": "true" },
     { "X-Retain-Images": "none", "X-No-Cache": "true",
       "X-Target-Selector": "[class*=recipe],[class*=Recipe],main,article" },
     {}
@@ -1019,6 +1045,7 @@ async function extractFromLink(){
 // Appel OCR avec réessais et messages d'erreur explicites
 async function ocrCall(page){
   for (let attempt = 0; attempt < 3; attempt++) {
+    await apiPause();
     const r = await fetch("https://api.mistral.ai/v1/ocr", {
       method:"POST",
       headers:{ "Content-Type":"application/json", "Authorization":"Bearer " + mistralKey() },
@@ -1029,7 +1056,7 @@ async function ocrCall(page){
     try { const j = await r.json(); detail = (j.message || (j.detail && JSON.stringify(j.detail).slice(0,120))) || ""; } catch(e) {}
     if (r.status === 429 && attempt < 2) {
       setExtractStatus("⏳ Limite atteinte — nouvel essai (" + (attempt+1) + "/3)…");
-      await sleep(5000 * (attempt + 1));
+      await sleep(2000 + attempt * 1000);
       continue;
     }
     if (r.status === 401) throw new Error("clé API invalide — vérifiez la clé dans Réglages");
@@ -1081,7 +1108,7 @@ async function transcribePhoto(dataUrl){
         return await transcribeByVision(dataUrl);
       }
       setExtractStatus("⏳ OCR : tentative " + attempt + " échouée (" + msg + ") — nouvel essai…");
-      await sleep(5000 * attempt);
+      await sleep(2000 * attempt);
     }
   }
 }
@@ -1168,6 +1195,7 @@ async function bulkStart(){
   if (!total) { toast("Ajoutez au moins un lien ou une photo"); return; }
   const st = m => { const el = document.getElementById("bulk-status"); if (el) el.textContent = m; };
   const drafts = [];
+
   let done = 0;
   for (const url of links) {
     st("⏳ " + (++done) + "/" + total + " — lecture de " + url.slice(0,48) + "…");
@@ -1195,7 +1223,6 @@ async function bulkStart(){
 }
 function bulkReview(i){
   const drafts = window._bulkDrafts || [];
-
   if (i >= drafts.length) {
     closeSheet(); render();
     toast("Import en masse terminé ✓");
@@ -1277,6 +1304,10 @@ function renderCourses(el){
     ${inStore ? `<div class="card" style="background:#ecfdf5;border-color:#a7f3d0;color:#065f46;font-size:12px;font-weight:600">📶 Mode magasin : tout fonctionne hors ligne, la synchro reprendra au retour du réseau.</div>` : ""}
     <div class="row" style="margin-bottom:12px">
       <input class="field grow" id="nl-name" placeholder="Ajouter un article…" onkeydown="if(event.key==='Enter')askAddManual()">
+      <select class="field" id="nl-cat" style="width:auto;max-width:150px;padding:10px 8px;font-size:12px">
+        <option value="">Catégorie auto</option>
+        ${CATS.map(c=>`<option value="${c.id}">${c.emoji} ${c.label}</option>`).join("")}
+      </select>
       <button class="btn btn-primary" style="width:auto;padding:10px 16px" onclick="askAddManual()">+</button>
       <button class="btn btn-ghost" style="width:auto;padding:10px 12px" onclick="toast('📷 Photo de liste manuscrite : extraction IA bientôt disponible')">📷</button>
     </div>
@@ -1316,6 +1347,8 @@ function toggleItem(id, field){
 function askAddManual(){
   const el = document.getElementById("nl-name");
   const nom = el.value.trim(); if(!nom) return;
+  const sel = document.getElementById("nl-cat");
+  window._manualCat = (sel && sel.value) || "";
   el.value = "";
   window._manualNom = nom;
   openSheet(`
@@ -1323,6 +1356,11 @@ function askAddManual(){
     <div class="row">
       <input class="field grow" type="number" step="any" min="0" id="nl-qte" placeholder="Quantité (ex : 500)" autofocus>
       <input class="field" style="width:110px" id="nl-unite" placeholder="Unité (g, ml, pièce…)">
+    </div>
+    <div style="height:8px"></div>
+    <p style="font-size:11px;color:var(--muted);margin-bottom:4px">Catégorie :</p>
+    <div class="row" id="nl-cats" style="flex-wrap:wrap;gap:6px">
+      ${CATS.map(c=>`<button class="pill" style="background:#f5f5f4;color:#57534e;${(window._manualCat||"")===c.id?"outline:2px solid var(--indigo);outline-offset:1px":""}" onclick="window._manualCat='${c.id}';[...document.querySelectorAll('#nl-cats .pill')].forEach(b=>b.style.outline='none');this.style.outline='2px solid var(--indigo)'">${c.emoji} ${c.label}</button>`).join("")}
     </div>
     <div style="height:10px"></div>
     <button class="btn btn-primary" onclick="confirmManual()">Ajouter à la liste</button>
@@ -1333,11 +1371,11 @@ function confirmManual(){
   const q = parseFloat(document.getElementById("nl-qte").value);
   const u = document.getElementById("nl-unite").value.trim() || "pièce";
   if (!q || q<=0) { toast("Quantité invalide — ou choisissez « sans quantité »"); return; }
-  mergeIntoList([{ nom:window._manualNom, qte:fmtQte(q, u) }]);
+  mergeIntoList([{ nom:window._manualNom, qte:fmtQte(q, u), cat:window._manualCat || undefined }]);
   save(); closeSheet(); render(); toast("Article ajouté ✓");
 }
 function addManualNoQty(){
-  mergeIntoList([{ nom:window._manualNom, qte:"" }]);
+  mergeIntoList([{ nom:window._manualNom, qte:"", cat:window._manualCat || undefined }]);
   save(); closeSheet(); render(); toast("Article ajouté ✓");
 }
 function addManual(){
@@ -1458,6 +1496,7 @@ function importRecipes(input){
 }
 function wipe(){ lsDel(LS_KEY); S = loadState(); save(); render(); toast("Données effacées"); }
 
+
 // ============================================================
 // SYNCHRONISATION (Supabase) — locale d'abord, cloud ensuite
 // ============================================================
@@ -1496,7 +1535,6 @@ function loadScript(src){
     document.head.appendChild(s);
   });
 }
-
 async function pull(){
   if (!sb) return;
   const { data, error } = await sb.from("app_state").select("data, updated_at").eq("foyer", FOYER).maybeSingle();
