@@ -89,7 +89,7 @@
 
 const SUPABASE_URL = "https://dqztmfrhobiyohvicemq.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_5Vch5zEymP-ExqRat4VvmA_eVuHHDEE";
-const APP_VERSION = "1.7.3";
+const APP_VERSION = "1.8.0";
 const FOYER = "CADOUX";         // code foyer : ta compagne utilisera le même
 
 // ---------- Constantes métier ----------
@@ -248,6 +248,10 @@ function mealCell(d, repas) {
   if (!m.convives || (m.convives.length===0 && !(m.invites>0)))
     return `<button class="cell nobody" onclick="editMeal('${d}','${repas}')">vide</button>`;
   const parts = partsMeal(m);
+  if (m.restes)
+    return `<button class="cell special" onclick="editMeal('${d}','${repas}')">🍱 Restes<span class="who">${parts} pers.</span></button>`;
+  if (m.impro)
+    return `<button class="cell filled" onclick="editMeal('${d}','${repas}')">🥘 ${esc((m.impro.ingredients||[]).map(i=>i.nom).join(", ").slice(0,34))}<span class="who">${parts} pers.</span></button>`;
   if (m.special)
     return `<button class="cell special" onclick="editMeal('${d}','${repas}')">🎉 ${esc(m.special)}<span class="who">${parts} pers.</span></button>`;
   const r = S.recipes.find(x=>x.id===m.recetteId);
@@ -255,6 +259,15 @@ function mealCell(d, repas) {
 }
 function partsOf(ids){ return PERSONNES.filter(p=>ids.includes(p.id)).reduce((s,p)=>s+p.parts,0); }
 function partsMeal(m){ return partsOf(m.convives||[]) + (m.invites||0); }
+// ⭐ Nombre de portions réalisées par recette, compté sur tout le planning (préférences)
+function recipeUseCounts(){
+  const c = {};
+  Object.values(S.meals).forEach(m=>{
+    if (m && m.recetteId && !m.restes)
+      c[m.recetteId] = (c[m.recetteId]||0) + partsMeal(m);
+  });
+  return c;
+}
 function fmtPers(m){ const t = (m.convives||[]).length + (m.invites||0); return (t%1 ? t.toFixed(1) : t); }
 
 function editMeal(d, repas) {
@@ -279,6 +292,7 @@ function editMeal(d, repas) {
       <button class="btn btn-ghost" style="width:46px;font-size:18px" onclick="setInvites('${key}',0.5)">+</button>
     </div>
     <button class="optline" style="margin-top:8px;text-align:center;color:#a8a29e" onclick="setMealEmpty('${key}')">Option « vide » — personne ne mange à la maison 🚫</button>
+
     ${(m.convives.length || (m.invites||0)>0) ? `
       <div class="lbl">Plat principal</div>
       ${S.recipes.map(r=>`
@@ -290,9 +304,10 @@ function editMeal(d, repas) {
       ${S.recipes.length ? "" : `<p style="font-size:12px;color:var(--muted)">Aucune recette — créez-en une juste en dessous 👇</p>`}
       <button class="optline" style="color:var(--indigo);text-align:center;border-color:#c7d2fe" onclick="askNewRecipeFromMeal('${key}')">＋ Créer une nouvelle recette pour ce repas…</button>
       <button class="optline" style="color:#7c3aed;text-align:center;border-color:#ddd6fe" onclick="askSpecial('${key}')">🎉 Repas spécial (anniversaire, invités…)</button>
+      <button class="optline" style="color:#0d9488;text-align:center;border-color:#99f6e4" onclick="askImpro('${key}')">🥘 Repas improvisé (ingrédients libres)…</button>
+      <button class="optline" style="color:#c2410c;text-align:center;border-color:#fed7aa" onclick="setMealRestes('${key}')">🍱 Restes (rien à acheter)</button>
     ` : ""}
   `);
-
 }
 function toggleConvive(key, pid) {
   const m = S.meals[key] || { recetteId:null, convives:[], special:null };
@@ -323,6 +338,46 @@ function saveSpecial(key){
   S.meals[key] = Object.assign({}, S.meals[key]||{}, { special:v, recetteId:null });
   save(); closeSheet(); render();
 }
+// 🥘 Repas improvisé : pas de recette, on saisit les ingrédients un à un
+// (ex : purée, boudin, haricots verts). Quantités saisies telles quelles.
+function askImpro(key){
+  const m = S.meals[key] || { convives:[] };
+  window._improRows = (m.impro && m.impro.ingredients && m.impro.ingredients.length)
+    ? m.impro.ingredients.map(i=>({ nom:i.nom, qte:i.qte, unite:i.unite }))
+    : [{ nom:"", qte:"", unite:"" }];
+  renderImproForm(key);
+}
+function renderImproForm(key){
+  const rows = window._improRows.map((ing,i)=>`
+    <div class="row" style="margin-bottom:6px">
+      <input class="field grow" placeholder="Ingrédient (ex : purée)" value="${esc(ing.nom||"")}" oninput="window._improRows[${i}].nom=this.value">
+      <input class="field" style="width:64px" placeholder="Qté" value="${esc(ing.qte||"")}" oninput="window._improRows[${i}].qte=this.value">
+      <input class="field" style="width:86px" placeholder="Unité" value="${esc(ing.unite||"")}" oninput="window._improRows[${i}].unite=this.value">
+    </div>`).join("");
+  openSheet(`
+    <h3>🥘 Repas improvisé <button class="close" onclick="closeSheet()">✕</button></h3>
+    <p style="font-size:11px;color:var(--muted);margin-bottom:8px">Ex : purée, boudin, haricots verts. Les quantités sont prises telles quelles (pas de recalcul par personne).</p>
+    ${rows}
+    <button class="optline" style="border-style:dashed;text-align:center;color:#a8a29e" onclick="window._improRows.push({nom:'',qte:'',unite:''});renderImproForm('${key}')">+ Ajouter un ingrédient</button>
+    <div style="height:10px"></div>
+    <button class="btn btn-primary" onclick="saveImpro('${key}')">Enregistrer</button>`);
+}
+function saveImpro(key){
+  const ings = window._improRows.filter(i=>i.nom && i.nom.trim());
+  const m = S.meals[key] || { convives:[] };
+  if (ings.length) m.impro = { ingredients: ings.map(i=>({ nom:i.nom.trim(), qte:parseFloat(i.qte)||0, unite:(i.unite||"").trim()||"pièce" })) };
+  else delete m.impro;
+  m.recetteId = null; m.special = null; m.restes = false;
+  S.meals[key] = m; save(); closeSheet(); render();
+  if (ings.length) toast("Repas improvisé ajouté — pensez à régénérer la liste 🛒");
+}
+// 🍱 Restes : le repas existe (personnes à table) mais rien à acheter
+function setMealRestes(key){
+  const m = S.meals[key] || { convives:[] };
+  m.restes = true; m.recetteId = null; m.special = null; delete m.impro;
+  S.meals[key] = m; save(); closeSheet(); render();
+  toast("Repas « restes » — aucun article ajouté à la liste");
+}
 function askExtra() {
   openSheet(`
     <h3>Plat hors planning <button class="close" onclick="closeSheet()">✕</button></h3>
@@ -350,7 +405,18 @@ function generateList() {
     const debut = S.weekStart || todayISO();
     const jour = (key.split("|")[0] || "");
     if (/^\d{4}-\d{2}-\d{2}$/.test(jour) && jour < debut) return;
-    if (!m.recetteId || ((!m.convives || !m.convives.length) && !(m.invites>0))) return;
+    if (!m.convives || (!m.convives.length && !(m.invites>0))) return;
+    if (m.restes) return; // 🍱 restes : rien à acheter
+    if (m.impro && m.impro.ingredients && m.impro.ingredients.length) {
+      // 🥘 repas improvisé : quantités saisies telles quelles, pas de recalcul par personne
+      m.impro.ingredients.forEach(ing => {
+        if (isExclu(ing.nom)) return;
+        const k = norm(ing.nom) + "|" + ing.unite;
+        (fusion[k] = fusion[k] || { nom:ing.nom, unite:ing.unite, qte:0, cat:guessCat(ing.nom) }).qte += (parseFloat(ing.qte)||0);
+      });
+      return;
+    }
+    if (!m.recetteId) return;
     const r = S.recipes.find(x=>x.id===m.recetteId);
     if (!r) return;
     const base = r.baseServings || 2;
@@ -390,7 +456,7 @@ function isExclu(nom){
 }
 function guessCat(nom){
   const n = norm(nom);
-  if (/(bebe|bébé|couche|lait infantile|petit pot|baby|biberon|coton tige bebe)/.test(n)) return "bebe";
+  if (/(bebe|bébé|couche|apolline|lait infantile|petit pot|baby|biberon|coton tige bebe)/.test(n)) return "bebe";
   if (/(riz|pate|pâtes|noix|noisette|amande|farine|sucre|quinoa|boulgour|semoule|lentille|pois chiche|couscous|cereale|céréale|huile|vinaigre|epice|épice|sel|miel|confiture|chocolat|cacao|levure|feuille brick|tortilla|gnocchi)/.test(n)) return "secs";
   if (/(tomate|concombre|butternut|oignon|citron|pomme|courge|carotte|poireau|salade|epinard|épinard|ail|poivron|courgette|aubergine|banane|orange|poire|fraise|radis|champignon|endive|brocoli|fenouil|navet|betterave|laitue|herbe|persil|basilic|avocat|mangue|melon|raisin|pruneau|abricot|peche|pêche|nectarine)/.test(n)) return "legumes";
   if (/(jambon|poulet|boeuf|bœuf|porc|saumon|cabillaud|crevette|lard|steak|dinde|veau|agneau|merlu|truite|chorizo|viande|haché|hache|saucisse|cotelette|côtelette)/.test(n)) return "viande";
@@ -398,6 +464,74 @@ function guessCat(nom){
   if (/(savon|shampooing|dentifrice|douche|brosse|coton|mouchoir|deodorant|déodorant|hygiene|hygiène|bain|intime|maquillage|rasoir|papier toilette)/.test(n)) return "hygiene";
   if (/(eponge|éponge|papier|lessive|vaisselle|poubelle|sac|seau|nettoyant|grille|aluminium|film|essuie)/.test(n)) return "menage";
   return "autres";
+}
+// ---------- 💰 Estimation du prix par portion ----------
+// Table de prix de référence [motif du nom, prix, unité de prix] : premier motif qui
+// matche sur le nom normalisé de l'ingrédient. Repli : prix moyen par catégorie.
+const PRIX = [
+  [/(filet de boeuf|filet de bœuf|boeuf|bœuf|steak|hach|bourguignon)/, 16, "kg"],
+  [/(veau|blanquette|escalope)/, 16, "kg"],
+  [/(poulet|dinde|jambon|lardon|chorizo|saucisse|merguez|andouille|boudin)/, 10, "kg"],
+  [/(porc|cote de porc|côte de porc|bacon)/, 10, "kg"],
+  [/(agneau|mouton|gigot)/, 18, "kg"],
+  [/(saumon|truite)/, 20, "kg"],
+  [/(cabillaud|colin|bar\b|dorade|poisson|anchois|sardine|thon|lieu)/, 15, "kg"],
+  [/(crevette|gambas|moule\b|st jacques|saint-jacques|homard|langoustine)/, 14, "kg"],
+  [/(oeuf|œuf)/, 0.35, "pièce"],
+  [/(parmesan|comte|comté|gruyere|gruyère|roquefort|bleu\b)/, 22, "kg"],
+  [/(fromage|mozzarella|emmental|cheddar|chevre|chèvre|feta|ricotta|mascarpone|yaourt|yogourt)/, 11, "kg"],
+  [/(beurre|margarine)/, 9, "kg"],
+  [/(creme|crème)/, 5.5, "L"],
+  [/(lait\b)/, 1.1, "L"],
+  [/(huile d'olive)/, 11, "L"],
+  [/(huile)/, 3.5, "L"],
+  [/(riz|quinoa|boulgour|semoule|couscous)/, 3, "kg"],
+  [/(pate|pâtes|nouille|spaghetti|macaroni|tortilla|feuille de brick|gnocchi|lasagne)/, 2.5, "kg"],
+  [/(farine|sucre|fecule|fécule|maizena|maïzena|levure|chapelure)/, 1.5, "kg"],
+  [/(pomme de terre|patate|purée)/, 1.6, "kg"],
+  [/(chocolat|cacao)/, 12, "kg"],
+  [/(miel|confiture|sirop)/, 8, "kg"],
+  [/(avocat)/, 1.6, "pièce"],
+  [/(salade|laitue|roquette|jeunes pousses)/, 1.2, "pièce"],
+  [/(persil|basilic|menthe|coriandre fraiche|coriandre fraîche|ciboulette|thym frais|estragon)/, 1.5, "pièce"],
+  [/(pain|baguette|brioche)/, 1.5, "pièce"],
+  [/(banane|pomme|orange|citron|poire|fraise|mangue|melon|raisin|peche|pêche|nectarine|abricot|pruneau|fruit)/, 3, "kg"],
+  [/(butternut|courge|courgette|aubergine|poivron|tomate|oignon|echalote|échalote|carotte|poireau|brocoli|chou|epinard|épinard|concombre|champignon|endive|fenouil|navet|betterave|radis|haricot|petit pois|legume|légume)/, 3, "kg"],
+  [/(vin blanc|vin rouge|brouilly)/, 6, "L"],
+  [/(bouillon|fond de volaille)/, 2, "L"],
+];
+const PRIX_CAT = { viande:12, laitage:8, legumes:3, secs:4, hygiene:6, menage:5, bebe:8, autres:6 };
+function prixIngredient(ing, pu, unit){
+  const u = (ing.unite||"pièce").toLowerCase();
+  const q = ing.qte || 0;
+  if (q <= 0) return 0.3 * pu; // quantité inconnue : ~30% d'une unité de prix
+  if (/pincée|pincée|pinch|un peu|quelques/.test(u)) return 0;
+  let kg = 0, L = 0, pc = 0;
+  if (/pièce|piece|gousse|tranche|rondelle|branche|bouquet|botte|boîte|boite|bocal|paquet|sachet|barquette|poignée/.test(u)) pc = q;
+  else if (u==="kg") kg = q;
+  else if (u==="g") kg = q/1000;
+  else if (u==="l"||u==="litre"||u==="litres") L = q;
+  else if (u==="cl") L = q/100;
+  else if (u==="ml") L = q/1000;
+  else if (/soupe|c\. à s|c. à s|cas\b|cs\b|cas\b/.test(u)) L = q*0.015;
+  else if (/café|c\. à c|c. à c|cac\b|cc\b/.test(u)) L = q*0.005;
+  else pc = q; // unité exotique : traitée comme pièce
+  if (unit==="kg") return kg>0 ? kg*pu : (L>0 ? L*pu : pc*0.1*pu);   // pièce ≈ 100 g
+  if (unit==="L")  return L>0  ? L*pu  : kg*pu;                       // densité ≈ 1
+  return pc>0 ? pc*pu : kg*0.1*pu;                                    // tarifé à la pièce
+}
+function estimePrixPortion(r){
+  const portions = Math.max(1, r.baseServings || 2);
+  let total = 0;
+  (r.ingredients||[]).forEach(ing=>{
+    const n = norm(ing.nom||"");
+    if (!n) return;
+    let pu = null, unit = "kg";
+    for (const [re, p, up] of PRIX) { if (re.test(n)) { pu = p; unit = up; break; } }
+    if (pu == null) { const c = guessCat(n); pu = PRIX_CAT[c] != null ? PRIX_CAT[c] : 6; unit = "kg"; }
+    total += prixIngredient(ing, pu, unit);
+  });
+  return total / portions;
 }
 function fmtQte(q, u){
   if (q<=0) return "";
@@ -441,23 +575,31 @@ function parseQ(s){
 // ============================================================
 let recFiltres = [];
 function renderRecettes(el){
-  const list = S.recipes.filter(r => !recFiltres.length || (r.tags||[]).some(t=>recFiltres.includes(t)));
+  const usage = recipeUseCounts();
+  const list = S.recipes
+    .filter(r => !recFiltres.length || (r.tags||[]).some(t=>recFiltres.includes(t)))
+    .slice().sort((a,b)=>(usage[b.id]||0)-(usage[a.id]||0)); // ⭐ favoris en haut (portions réalisées)
   el.innerHTML = `
     <div class="row" style="flex-wrap:wrap;gap:6px;margin-bottom:10px">
       <button class="pill ${!recFiltres.length?'on':''}" style="background:#f5f5f4;color:#57534e" onclick="recFiltres=[];render()">Toutes</button>
       ${Object.entries(TAGS).map(([id,t])=>`
         <button class="pill ${recFiltres.includes(id)?'on':''}" style="${t.css}" onclick="toggleRecFiltre('${id}')">${t.label}</button>`).join("")}
     </div>
-    <button class="btn btn-primary" style="margin-bottom:12px" onclick="askNewRecipe()">+ Nouvelle recette</button>
+    <div class="row" style="margin-bottom:12px">
+      <button class="btn btn-primary grow" onclick="askNewRecipe()">+ Nouvelle recette</button>
+      <button class="btn btn-ghost grow" onclick="askBulkImport()">🚀 Import en masse</button>
+    </div>
     ${list.map(r=>`
       <div class="card" onclick="openRecipe('${r.id}')" style="cursor:pointer;padding:0;overflow:hidden;height:116px">
         <div class="row" style="align-items:stretch;height:100%">
           ${r.photo
+
             ? `<img src="${r.photo}" style="width:118px;height:116px;object-fit:cover;flex-shrink:0">`
             : `<div style="width:118px;height:116px;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:#f5f5f4;font-size:34px">🍽️</div>`}
           <div class="grow" style="padding:11px 12px;min-width:0">
             <div class="row" style="justify-content:space-between">
               <b style="font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(r.nom)}</b>
+              ${usage[r.id] ? `<span style="font-size:10px;color:#f59e0b;flex-shrink:0;font-weight:700">⭐ ${usage[r.id]} p.</span>` : ""}
               <span style="color:#a8a29e;flex-shrink:0">›</span>
             </div>
             <div class="tagrow" style="flex-wrap:nowrap;overflow:hidden;white-space:nowrap;margin-top:4px">${(r.tags||[]).map(t=>`<span class="pill" style="${TAGS[t].css}">${TAGS[t].label}</span>`).join("")}</div>
@@ -508,6 +650,7 @@ function openRecipe(id){
         <span class="pill" style="background:#f5f5f4;color:#57534e;min-width:20px;text-align:center">${i+1}</span>
         <span style="font-size:13px">${esc(e)}</span>
       </div>`).join("") || "<i style='font-size:12px;color:#a8a29e'>Pas d'étapes</i>"}</div>
+    <p style="font-size:11px;color:#a8a29e;text-align:center;margin-top:10px">💰 ≈ ${estimePrixPortion(r).toFixed(2).replace(".", ",")} € / portion (estimation automatique)</p>
     <div class="row">
       <button class="btn btn-ghost grow" onclick="document.getElementById('rp-photo').click()">📷 Photo</button>
       <button class="btn btn-ghost grow" onclick="editRecipe('${r.id}')">✏️ Modifier</button>
@@ -593,7 +736,6 @@ function ingRow(i){
     <div class="row" style="margin-bottom:6px">
       <input class="field grow" placeholder="Ingrédient" data-f="nom">
       <input class="field" style="width:76px" type="number" step="any" placeholder="Qté" data-f="qte">
-
       <input class="field" style="width:62px" placeholder="unité" data-f="unite">
       <button type="button" class="checker" style="background:#fff;color:#a8a29e;border-color:var(--line)" title="Supprimer cet ingrédient" onclick="delRow(this)">✕</button>
     </div>`;
@@ -670,7 +812,7 @@ function collectRecipe(){
   const photo = window._draftPhoto || null;
   return { nom, baseServings:parseFloat(document.getElementById("rf-serv").value)||2, ingredients, etapes, tags, source, photo };
 }
-function saveRecipe(editId){
+function saveRecipe(editId, after){
   const r = collectRecipe(); if (!r) return;
   let newId;
   if (editId) { const i = S.recipes.findIndex(x=>x.id===editId); S.recipes[i] = Object.assign({}, S.recipes[i], r); newId = editId; }
@@ -680,7 +822,9 @@ function saveRecipe(editId){
     S.meals[window._mealKey] = Object.assign({}, S.meals[window._mealKey]||{}, { recetteId:newId, special:null });
     window._mealKey = null;
   }
-  save(); closeSheet(); render(); toast("Recette enregistrée ✓");
+  save(); toast("Recette enregistrée ✓");
+  if (after) { after(); return; }
+  closeSheet(); render();
 }
 function askNewRecipe(){ window.recPortions = 2; window._mealKey = null; window._draftPhoto = null; window._refText = null; openSheet(`
   <h3>Nouvelle recette <button class="close" onclick="closeSheet()">✕</button></h3>
@@ -750,6 +894,7 @@ async function mistralJSON(text, source){
   }
   throw lastErr || new Error("tous les modèles sont limités — réessayez dans une minute");
 }
+
 // Un ingrédient est « suspect » s'il n'est pas recopié fidèlement depuis la source :
 // ni le nom complet, ni le mot principal, ni une variante singulier/pluriel n'apparaissent
 function normForMatch(s){ return norm(s).replace(/(s|x)\b/g,"").replace(/\s+/g," "); }
@@ -894,7 +1039,6 @@ function convertPhoto(f, cb){
   const fr = new FileReader();
   fr.onerror = () => cb(null, "fichier illisible");
   fr.onload = () => {
-
     const img = new Image();
     img.onload = () => {
       const max = 1280;
@@ -990,6 +1134,99 @@ function askNewRecipeFromMeal(key){
     <h3>Nouvelle recette pour ce repas <button class="close" onclick="closeSheet()">✕</button></h3>
     ${recipeForm({})}`);
 }
+// ---------- 🚀 Import en masse (liens + photos) avec vérification une à une ----------
+function askBulkImport(){
+  window._bulkFiles = [];
+  openSheet(`
+    <h3>🚀 Nouvelles recettes — import en masse <button class="close" onclick="closeSheet()">✕</button></h3>
+    <div class="lbl" style="margin-top:0">Liens internet (un par ligne)</div>
+    <textarea class="field" id="bulk-links" rows="4" style="resize:vertical;font-size:12px" placeholder="https://…&#10;https://…"></textarea>
+    <div class="lbl" style="margin-top:10px">Photos — 1 photo = 1 recette</div>
+    <button class="btn btn-ghost" style="width:100%" onclick="document.getElementById('bulk-photos').click()">📷 Choisir une ou plusieurs photos…</button>
+    <input type="file" id="bulk-photos" accept="image/*" multiple class="hidden" onchange="bulkPhotoSelect(this)">
+    <div id="bulk-status" style="font-size:12px;color:var(--muted);margin-top:8px"></div>
+    <div style="height:10px"></div>
+    <button class="btn btn-primary" onclick="bulkStart()">🚀 Lancer l'import</button>
+    <p style="font-size:10px;color:#a8a29e;margin-top:8px">Chaque recette extraite sera présentée une par une pour vérification avant enregistrement.</p>`);
+}
+function bulkPhotoSelect(input){
+  window._bulkFiles = [...(input.files||[])];
+  document.getElementById("bulk-status").textContent = window._bulkFiles.length
+    ? window._bulkFiles.length + " photo(s) prête(s)" : "";
+}
+async function bulkStart(){
+  if (!mistralKey()) { toast("Renseignez d'abord la clé Mistral dans Réglages ⚙️"); return; }
+  const links = (document.getElementById("bulk-links").value||"").split("\n").map(s=>s.trim()).filter(s=>/^https?:\/\//.test(s));
+  const files = window._bulkFiles || [];
+  const total = links.length + files.length;
+  if (!total) { toast("Ajoutez au moins un lien ou une photo"); return; }
+  const st = m => { const el = document.getElementById("bulk-status"); if (el) el.textContent = m; };
+  const drafts = [];
+  let done = 0;
+  for (const url of links) {
+    st("⏳ " + (++done) + "/" + total + " — lecture de " + url.slice(0,48) + "…");
+    try {
+      const raw = await fetchRecipeText(url);
+      const text = relevantText(raw.length > 150000 ? raw.slice(0,150000) : raw);
+      const d = await mistralJSON(text, url);
+      const imgUrl = await fetchLinkImage(url).catch(()=>null);
+      drafts.push({ d, source:url, photo: imgUrl ? proxyImg(imgUrl) : null, text });
+    } catch(e) { drafts.push({ erreur:(e.message||"lecture impossible"), source:url }); }
+  }
+  for (const f of files) {
+    st("⏳ " + (++done) + "/" + total + " — photo " + (f.name||"") + "…");
+    try {
+      const conv = await new Promise(ok => convertPhoto(f, (dataUrl, err) => ok({ dataUrl, err })));
+      if (!conv.dataUrl) { drafts.push({ erreur:"conversion impossible (format non supporté)", source:f.name||"photo" }); continue; }
+      const text = await transcribePhoto(conv.dataUrl);
+      const d = await mistralJSON(text, "photo");
+      drafts.push({ d, source:"", photo:conv.dataUrl, text });
+    } catch(e) { drafts.push({ erreur:(e.message||"extraction impossible"), source:f.name||"photo" }); }
+  }
+  st("✅ Extraction terminée (" + drafts.length + " résultat(s)) — vérification…");
+  window._bulkDrafts = drafts;
+  bulkReview(0);
+}
+function bulkReview(i){
+  const drafts = window._bulkDrafts || [];
+  if (i >= drafts.length) {
+    closeSheet(); render();
+    toast("Import en masse terminé ✓");
+    return;
+  }
+  const item = drafts[i];
+
+  if (item.erreur) {
+    openSheet(`<h3>🚀 Vérification ${i+1}/${drafts.length} <button class="close" onclick="closeSheet()">✕</button></h3>
+      <div class="card" style="background:#fef2f2;border-color:#fecaca;color:#b91c1c;font-size:12px">❌ ${esc(item.source||"")} : ${esc(item.erreur)}</div>
+      <div style="height:8px"></div>
+      <button class="btn btn-primary" onclick="bulkReview(${i+1})">Suivant →</button>`);
+    return;
+  }
+  const d = item.d || {};
+  window._refText = item.text || null;
+  window._draftPhoto = item.photo !== undefined ? item.photo : null;
+  window._draft = {
+    nom: d.nom || "",
+    baseServings: d.baseServings || 2,
+    ingredients: (d.ingredients||[]).map(x=>({ nom:x.nom||"", qte:x.qte||0, unite:x.unite||"pièce" })).filter(x=>x.nom),
+    etapes: d.etapes || [],
+    tags: (d.tags||[]).filter(t=>TAGS[t]),
+    source: item.source || ""
+  };
+  openSheet(`
+    <h3>🚀 Vérification ${i+1}/${drafts.length} <button class="close" onclick="closeSheet()">✕</button></h3>
+    <p style="font-size:11px;color:var(--muted);margin-bottom:6px">✨ L'IA a lu la source : relisez, corrigez, puis enregistrez pour passer à la suivante.</p>
+    ${recipeForm(window._draft)}
+    <div class="row" style="margin-top:10px">
+      <button class="btn btn-ghost grow" onclick="bulkReview(${i+1})">⏭ Passer</button>
+      <button class="btn btn-primary grow" onclick="bulkSave(${i})">✅ Enregistrer et suivant</button>
+    </div>`);
+}
+function bulkSave(i){
+  window._mealKey = null;
+  saveRecipe(null, ()=>bulkReview(i+1));
+}
 function editRecipe(id){
   const r = S.recipes.find(x=>x.id===id);
   window._refText = null;
@@ -1024,6 +1261,7 @@ function renderCourses(el){
             <button class="checker ${i.checked?'on':''}" onclick="toggleItem('${i.id}','checked')">${i.checked?"✓":""}</button>
             <span class="grow nm" style="font-size:13px" onclick="toggleItem('${i.id}','checked')">${esc(i.nom)}</span>
             <span style="font-size:12px;color:var(--muted)">${esc(i.qte||"")}</span>
+            <button class="checker" style="background:#fff;color:#78716c" title="Changer de catégorie" onclick="askItemCat('${i.id}')">⇄</button>
             <button class="checker" style="border-color:#a7f3d0;background:#fff" title="Déjà à la maison" onclick="toggleItem('${i.id}','home')">🏠</button>
           </div>`).join("")}
       </div></div>`;
@@ -1051,6 +1289,18 @@ function renderCourses(el){
     <p style="font-size:10px;color:#a8a29e;text-align:center;margin-top:8px">
       Les non-cochés sont automatiquement reportés quand vous régénérez la liste depuis le Planning.
     </p>`;
+}
+// ⇄ Changement de catégorie d'un article de la liste
+function askItemCat(id){
+  const i = S.list.find(x=>x.id===id); if (!i) return;
+  openSheet(`<h3>« ${esc(i.nom)} » — catégorie <button class="close" onclick="closeSheet()">✕</button></h3>
+    ${CATS.map(c=>`<button class="optline" style="${i.cat===c.id?'border-color:var(--indigo);background:#eef2ff':''}" onclick="setItemCat('${id}','${c.id}')">${c.emoji} ${c.label}</button>`).join("")}
+  `);
+}
+function setItemCat(id, cat){
+  const i = S.list.find(x=>x.id===id);
+  if (i) { i.cat = cat; save(); }
+  closeSheet(); render(); toast("Catégorie changée ✓");
 }
 function toggleItem(id, field){
   const i = S.list.find(x=>x.id===id); i[field] = !i[field];
@@ -1154,7 +1404,7 @@ function renderReglages(el){
       <div style="height:8px"></div>
       <button class="btn btn-ghost" style="color:#be123c" onclick="if(confirm('Tout effacer (planning, recettes, listes) ?'))wipe()">🗑 Tout effacer</button>
     </div>
-    <p style="font-size:10px;color:#a8a29e;text-align:center;padding:6px 0 14px">Menus &amp; Courses v${APP_VERSION} — Gabriel &amp; famille</p>`;
+    <p style="font-size:10px;color:#a8a29e;text-align:center;padding:6px 0 14px">Menus &amp; Courses v${APP_VERSION} — Made by Gabriel with 0 coding skill and 100% AI assistance</p>`;
   updateSyncStatus();
 }
 function exportData(){
@@ -1195,7 +1445,6 @@ function importRecipes(input){
         if (i>=0) { S.recipes[i] = clean; updated++; } else { S.recipes.push(clean); added++; }
       });
       save(); render(); toast("Import : "+added+" ajoutée(s), "+updated+" mise(s) à jour ✓");
-
     } catch(e){ toast("Import impossible : fichier invalide"); }
     input.value = "";
   };
@@ -1247,6 +1496,7 @@ async function pull(){
   if (error) { window._syncError = "Lecture : " + error.message; updateSyncStatus(); return; }
   if (data) {
     applyRemote(data.data);
+
     window._syncError = null;
     window._lastPull = Date.now();
     updateSyncStatus();
