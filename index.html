@@ -89,7 +89,7 @@
 
 const SUPABASE_URL = "https://dqztmfrhobiyohvicemq.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_5Vch5zEymP-ExqRat4VvmA_eVuHHDEE";
-const APP_VERSION = "1.8.0";
+const APP_VERSION = "1.8.1";
 const FOYER = "CADOUX";         // code foyer : ta compagne utilisera le même
 
 // ---------- Constantes métier ----------
@@ -295,6 +295,8 @@ function editMeal(d, repas) {
 
     ${(m.convives.length || (m.invites||0)>0) ? `
       <div class="lbl">Plat principal</div>
+      <button class="optline" style="color:#0d9488;text-align:center;border-color:#99f6e4" onclick="askImpro('${key}')">🥘 Repas improvisé (ingrédients libres)…</button>
+      <button class="optline" style="color:#c2410c;text-align:center;border-color:#fed7aa" onclick="setMealRestes('${key}')">🍱 Restes (rien à acheter)</button>
       ${S.recipes.map(r=>`
         <button class="optline" onclick="setMealRecipe('${key}','${r.id}')"
           style="${m.recetteId===r.id?'border-color:var(--indigo);background:#eef2ff':''}">
@@ -304,8 +306,6 @@ function editMeal(d, repas) {
       ${S.recipes.length ? "" : `<p style="font-size:12px;color:var(--muted)">Aucune recette — créez-en une juste en dessous 👇</p>`}
       <button class="optline" style="color:var(--indigo);text-align:center;border-color:#c7d2fe" onclick="askNewRecipeFromMeal('${key}')">＋ Créer une nouvelle recette pour ce repas…</button>
       <button class="optline" style="color:#7c3aed;text-align:center;border-color:#ddd6fe" onclick="askSpecial('${key}')">🎉 Repas spécial (anniversaire, invités…)</button>
-      <button class="optline" style="color:#0d9488;text-align:center;border-color:#99f6e4" onclick="askImpro('${key}')">🥘 Repas improvisé (ingrédients libres)…</button>
-      <button class="optline" style="color:#c2410c;text-align:center;border-color:#fed7aa" onclick="setMealRestes('${key}')">🍱 Restes (rien à acheter)</button>
     ` : ""}
   `);
 }
@@ -343,8 +343,8 @@ function saveSpecial(key){
 function askImpro(key){
   const m = S.meals[key] || { convives:[] };
   window._improRows = (m.impro && m.impro.ingredients && m.impro.ingredients.length)
-    ? m.impro.ingredients.map(i=>({ nom:i.nom, qte:i.qte, unite:i.unite }))
-    : [{ nom:"", qte:"", unite:"" }];
+    ? m.impro.ingredients.map(i=>({ nom:i.nom, qte:i.qte, unite:i.unite, home:!!i.home }))
+    : [{ nom:"", qte:"", unite:"", home:false }];
   renderImproForm(key);
 }
 function renderImproForm(key){
@@ -353,19 +353,24 @@ function renderImproForm(key){
       <input class="field grow" placeholder="Ingrédient (ex : purée)" value="${esc(ing.nom||"")}" oninput="window._improRows[${i}].nom=this.value">
       <input class="field" style="width:64px" placeholder="Qté" value="${esc(ing.qte||"")}" oninput="window._improRows[${i}].qte=this.value">
       <input class="field" style="width:86px" placeholder="Unité" value="${esc(ing.unite||"")}" oninput="window._improRows[${i}].unite=this.value">
+      <button class="checker" style="background:${ing.home?'#a7f3d0':'#fff'};border-color:${ing.home?'#a7f3d0':'var(--line)'}" title="Déjà à la maison (exclu de la liste de courses)" onclick="toggleImproHome(${i},'${key}')">${ing.home?"🏠":""}</button>
     </div>`).join("");
   openSheet(`
     <h3>🥘 Repas improvisé <button class="close" onclick="closeSheet()">✕</button></h3>
     <p style="font-size:11px;color:var(--muted);margin-bottom:8px">Ex : purée, boudin, haricots verts. Les quantités sont prises telles quelles (pas de recalcul par personne).</p>
     ${rows}
-    <button class="optline" style="border-style:dashed;text-align:center;color:#a8a29e" onclick="window._improRows.push({nom:'',qte:'',unite:''});renderImproForm('${key}')">+ Ajouter un ingrédient</button>
+    <button class="optline" style="border-style:dashed;text-align:center;color:#a8a29e" onclick="window._improRows.push({nom:'',qte:'',unite:'',home:false});renderImproForm('${key}')">+ Ajouter un ingrédient</button>
     <div style="height:10px"></div>
     <button class="btn btn-primary" onclick="saveImpro('${key}')">Enregistrer</button>`);
+}
+function toggleImproHome(i, key){
+  window._improRows[i].home = !window._improRows[i].home;
+  renderImproForm(key);
 }
 function saveImpro(key){
   const ings = window._improRows.filter(i=>i.nom && i.nom.trim());
   const m = S.meals[key] || { convives:[] };
-  if (ings.length) m.impro = { ingredients: ings.map(i=>({ nom:i.nom.trim(), qte:parseFloat(i.qte)||0, unite:(i.unite||"").trim()||"pièce" })) };
+  if (ings.length) m.impro = { ingredients: ings.map(i=>({ nom:i.nom.trim(), qte:parseFloat(i.qte)||0, unite:(i.unite||"").trim()||"pièce", home:!!i.home })) };
   else delete m.impro;
   m.recetteId = null; m.special = null; m.restes = false;
   S.meals[key] = m; save(); closeSheet(); render();
@@ -411,6 +416,7 @@ function generateList() {
       // 🥘 repas improvisé : quantités saisies telles quelles, pas de recalcul par personne
       m.impro.ingredients.forEach(ing => {
         if (isExclu(ing.nom)) return;
+        if (ing.home) return; // 🏠 marqué « déjà à la maison » dans le repas improvisé
         const k = norm(ing.nom) + "|" + ing.unite;
         (fusion[k] = fusion[k] || { nom:ing.nom, unite:ing.unite, qte:0, cat:guessCat(ing.nom) }).qte += (parseFloat(ing.qte)||0);
       });
@@ -587,13 +593,13 @@ function renderRecettes(el){
     </div>
     <div class="row" style="margin-bottom:12px">
       <button class="btn btn-primary grow" onclick="askNewRecipe()">+ Nouvelle recette</button>
+
       <button class="btn btn-ghost grow" onclick="askBulkImport()">🚀 Import en masse</button>
     </div>
     ${list.map(r=>`
       <div class="card" onclick="openRecipe('${r.id}')" style="cursor:pointer;padding:0;overflow:hidden;height:116px">
         <div class="row" style="align-items:stretch;height:100%">
           ${r.photo
-
             ? `<img src="${r.photo}" style="width:118px;height:116px;object-fit:cover;flex-shrink:0">`
             : `<div style="width:118px;height:116px;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:#f5f5f4;font-size:34px">🍽️</div>`}
           <div class="grow" style="padding:11px 12px;min-width:0">
@@ -888,13 +894,13 @@ async function mistralJSON(text, source){
       });
       let txt = j.choices[0].message.content.trim();
       if (txt.startsWith("```")) txt = txt.replace(/```[a-z]*\n?/g,"").trim();
+
       const start = txt.indexOf("{"), end = txt.lastIndexOf("}");
       return JSON.parse(txt.slice(start, end+1));
     } catch(e) { lastErr = e; if (String(e.message).includes("401") || String(e.message).includes("402")) throw e; }
   }
   throw lastErr || new Error("tous les modèles sont limités — réessayez dans une minute");
 }
-
 // Un ingrédient est « suspect » s'il n'est pas recopié fidèlement depuis la source :
 // ni le nom complet, ni le mot principal, ni une variante singulier/pluriel n'apparaissent
 function normForMatch(s){ return norm(s).replace(/(s|x)\b/g,"").replace(/\s+/g," "); }
@@ -1189,13 +1195,13 @@ async function bulkStart(){
 }
 function bulkReview(i){
   const drafts = window._bulkDrafts || [];
+
   if (i >= drafts.length) {
     closeSheet(); render();
     toast("Import en masse terminé ✓");
     return;
   }
   const item = drafts[i];
-
   if (item.erreur) {
     openSheet(`<h3>🚀 Vérification ${i+1}/${drafts.length} <button class="close" onclick="closeSheet()">✕</button></h3>
       <div class="card" style="background:#fef2f2;border-color:#fecaca;color:#b91c1c;font-size:12px">❌ ${esc(item.source||"")} : ${esc(item.erreur)}</div>
@@ -1490,13 +1496,13 @@ function loadScript(src){
     document.head.appendChild(s);
   });
 }
+
 async function pull(){
   if (!sb) return;
   const { data, error } = await sb.from("app_state").select("data, updated_at").eq("foyer", FOYER).maybeSingle();
   if (error) { window._syncError = "Lecture : " + error.message; updateSyncStatus(); return; }
   if (data) {
     applyRemote(data.data);
-
     window._syncError = null;
     window._lastPull = Date.now();
     updateSyncStatus();
